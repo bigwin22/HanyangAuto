@@ -4,6 +4,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium import webdriver
 
+#TODO: 각 함수들 에 대한 docstring 추가
+#TODO: 예외 처리 분기점 추가 및 메시지 리턴
+#TODO: 각 함수들에 대한 타입 힌트 추가
+
 def login(driver: webdriver.Chrome, id: str, pwd: str) -> dict:
     """
     로그인 함수
