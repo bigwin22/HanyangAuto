@@ -31,11 +31,34 @@ def login(driver: webdriver.Chrome, id: str, pwd: str) -> dict:
     except Exception as e:
         return {"login": False, "msg": f"로그인 실패: {e}"}
 
-def get_cources() -> list:
+def get_cources(driver: webdriver.Chrome) -> list:
     """
     강의 목록 가져오기
     """
-    return []
+    course_list = []
+    try:
+        EC.presence_of_element_located((By.CSS_SELECTOR, "#primaryNavToggle"))
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#primaryNavToggle"))
+        )
+        EC.presence_of_element_located((By.CSS_SELECTOR, "#DashboardCard_Container > div > div"))
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#DashboardCard_Container > div > div"))
+        )
+        elements = driver.find_elements(By.CSS_SELECTOR, "#DashboardCard_Container > div > div")
+        for element in elements:
+            try:
+                href_element = element.find_element(By.CSS_SELECTOR, "a").get_attribute("href")
+                if href_element:
+                    href = href_element.split("/")[-1]
+                else:
+                    continue
+                course_list.append(href)
+            except Exception as e:
+                pass    
+        return course_list
+    except Exception as e:
+        return []
 
 def get_lectures() -> list:
     """
@@ -61,6 +84,6 @@ def learn_lecture() -> dict:
 if __name__ == "__main__":
     driver = init_driver()
     print(login(driver, "kth88", "Noohackingplz08!"))
-    # get_cources()
+    print(get_cources(driver))
     # get_lectures()
     # learn_lecture()
