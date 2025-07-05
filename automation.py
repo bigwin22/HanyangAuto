@@ -60,12 +60,36 @@ def get_cources(driver: webdriver.Chrome) -> list:
     except Exception as e:
         return []
 
-def get_lectures() -> list:
+def get_lectures(driver: webdriver.Chrome, course_list: list) -> list:
     """
     강의 목록 가져오기
     """
-    return []
-
+    lecture_list = []
+    for course in course_list:
+        driver.get("https://learning.hanyang.ac.kr/" + "courses/" + course + "/external_tools/140")
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#section-tabs > li:nth-child(3) > a"))
+            )
+            WebDriverWait(driver, 10).until(
+                EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#tool_content"))
+            )
+            WebDriverWait(driver,10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#root > div > div > div > div:nth-child(2) > div"))
+            )#frame전환후 프레임 내 요소 인식 기다리기
+            lectures = driver.find_elements(By.CSS_SELECTOR, "#root > div > div > div > div:nth-child(2) > div")
+            for lecture in lectures:
+                try:
+                    a = lecture.find_element(By.CSS_SELECTOR, "div > div.xnmb-module_item-left-wrapper > div > div.xnmb-module_item-meta_data-left-wrapper > div > a")
+                    href = a.get_attribute("href")
+                    learned = lecture.find_elements(By.CSS_SELECTOR, "div > div.xnmb-module_item-right-wrapper > span.xnmb-module_item-completed.completed")
+                    if not learned:
+                        lecture_list.append(href)
+                except Exception as e:
+                    pass
+        except Exception as e:
+            continue
+    return lecture_list
 def learn_lecture() -> dict:
     """
     강의 학습 함수
@@ -85,5 +109,6 @@ if __name__ == "__main__":
     driver = init_driver()
     print(login(driver, "kth88", "Noohackingplz08!"))
     print(get_cources(driver))
-    # get_lectures()
+    print(len(get_lectures(driver, get_cources(driver))))
     # learn_lecture()
+    driver.quit()

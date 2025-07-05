@@ -7,6 +7,9 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 
 def init_driver() -> webdriver.Chrome:
+    """
+    웹 드라이버 초기화 함수
+    """
     chromedriver_autoinstaller.install()
 
     chrome_options = Options()
