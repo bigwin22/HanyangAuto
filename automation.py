@@ -6,6 +6,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
+#TODO: 시험 유형의 강의는 안들어가게 처리
 
 def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, str]]:
     """
