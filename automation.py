@@ -1,16 +1,28 @@
+from typing import Dict, List, Union
 from utils.selenium_utils import init_driver, obj_click
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium import webdriver
 
-#TODO: 각 함수들 에 대한 docstring 추가
-#TODO: 예외 처리 분기점 추가 및 메시지 리턴
-#TODO: 각 함수들에 대한 타입 힌트 추가
+#TODO: 2. 예외 처리 분기점 추가 및 메시지 리턴
 
-def login(driver: webdriver.Chrome, id: str, pwd: str) -> dict:
+def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, str]]:
     """
-    로그인 함수
+    한양대학교 Learning Management System에 로그인합니다.
+    
+    Args:
+        driver (webdriver.Chrome): Selenium Chrome WebDriver 인스턴스
+        id (str): 로그인 아이디
+        pwd (str): 로그인 비밀번호
+    
+    Returns:
+        Dict[str, Union[bool, str]]: 로그인 성공 여부와 메시지를 포함한 딕셔너리
+            - login (bool): 로그인 성공 여부
+            - msg (str): 로그인 결과 메시지
+    
+    Raises:
+        Exception: 로그인 과정에서 발생하는 모든 예외를 처리하여 실패 메시지로 반환
     """
         # 로그인 페이지로 이동  
     driver.get("https://learning.hanyang.ac.kr/")
@@ -35,9 +47,20 @@ def login(driver: webdriver.Chrome, id: str, pwd: str) -> dict:
     except Exception as e:
         return {"login": False, "msg": f"로그인 실패: {e}"}
 
-def get_cources(driver: webdriver.Chrome) -> list:
+def get_cources(driver: webdriver.Chrome) -> List[str]:
     """
-    강의 목록 가져오기
+    대시보드에서 등록된 강의 목록을 가져옵니다.
+    
+    Args:
+        driver (webdriver.Chrome): Selenium Chrome WebDriver 인스턴스
+    
+    Returns:
+        List[str]: 강의 ID 목록. 각 강의의 고유 식별자가 포함됩니다.
+                   오류 발생 시 빈 리스트를 반환합니다.
+    
+    Note:
+        - 대시보드 카드 컨테이너에서 강의 링크를 찾아 ID를 추출합니다.
+        - 각 강의의 URL에서 마지막 부분을 강의 ID로 사용합니다.
     """
     course_list = []
     try:
@@ -62,11 +85,24 @@ def get_cources(driver: webdriver.Chrome) -> list:
                 pass    
         return course_list
     except Exception as e:
-        return []
+        return [] # 오류 발생 시 빈 리스트 반환
 
-def get_lectures(driver: webdriver.Chrome, course_list: list) -> list:
+def get_lectures(driver: webdriver.Chrome, course_list: List[str]) -> List[str]:
     """
-    강의 목록 가져오기
+    각 강의에서 수강하지 않은 개별 강의 목록을 가져옵니다.
+    
+    Args:
+        driver (webdriver.Chrome): Selenium Chrome WebDriver 인스턴스
+        course_list (List[str]): 강의 ID 목록
+    
+    Returns:
+        List[str]: 수강하지 않은 개별 강의 URL 목록
+                   완료되지 않은 강의만 포함됩니다.
+    
+    Note:
+        - 각 강의의 외부 도구 페이지로 이동하여 강의 목록을 확인합니다.
+        - iframe 내부의 강의 목록을 탐색하여 완료되지 않은 강의만 필터링합니다.
+        - 예외 발생 시 해당 강의는 건너뛰고 다음 강의로 진행합니다.
     """
     lecture_list = []
     for course in course_list:
@@ -94,22 +130,33 @@ def get_lectures(driver: webdriver.Chrome, course_list: list) -> list:
         except Exception as e:
             continue
     return lecture_list
-def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> dict[str, bool | str]:
+def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union[bool, str]]:
     """
-    강의 학습 함수
-    강의 URL을 받아 해당 강의를 학습하고 완료 여부를 반환합니다.
-    :param driver: Selenium WebDriver 인스턴스
-    :param lecture_url: 학습할 강의의 URL
-    :return: 학습 완료 여부와 메시지를 포함한 딕셔너리
-    :rtype: dict
-    1. 강의 URL로 이동합니다.
-    2. tool_content iframe으로 전환합니다.
-    3. 강의가 PDF 형식인지 확인하고, 완료 상태를 확인합니다.
-    4. PDF 강의가 아닐 경우 동영상 강의로 전환하고 학습을 시작합니다.
-    5. 학습 완료 여부를 확인하고, 완료되면 True, 아니면 False를 반환합니다.
-    6. 예외가 발생하면 학습 실패 메시지를 반환합니다.
-    7. 학습 완료 메시지를 반환합니다.
-    8. 학습 완료 여부와 메시지를 포함한 딕셔너리를 반환합니다.
+    개별 강의를 자동으로 수강하고 완료합니다.
+    
+    Args:
+        driver (webdriver.Chrome): Selenium Chrome WebDriver 인스턴스
+        lecture_url (str): 수강할 강의의 URL
+    
+    Returns:
+        Dict[str, Union[bool, str]]: 수강 완료 여부와 메시지를 포함한 딕셔너리
+            - learn (bool): 수강 완료 여부
+            - msg (str): 수강 결과 메시지
+    
+    Note:
+        강의 유형에 따라 다른 처리 방식을 사용합니다:
+        - PDF 강의: 진행 상태를 확인하고 완료 버튼을 클릭
+        - 동영상 강의: 비디오 플레이어를 시작하고 완료될 때까지 대기
+        
+        처리 과정:
+        1. 강의 URL로 이동
+        2. tool_content iframe으로 전환
+        3. 강의 형식 확인 (PDF 또는 동영상)
+        4. 각 형식에 맞는 수강 진행
+        5. 완료 상태 확인 및 결과 반환
+    
+    Raises:
+        Exception: 각 단계에서 발생하는 예외를 처리하여 실패 메시지로 반환
     """
     driver.get(lecture_url)
     ##tool_content iframe으로 전환
