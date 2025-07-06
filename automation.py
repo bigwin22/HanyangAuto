@@ -6,7 +6,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
-#TODO: 시험 유형의 강의는 안들어가게 처리
 
 def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, str]]:
     """
@@ -170,6 +169,10 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
         WebDriverWait(driver, 2).until(
             EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#tool_content"))
         )
+    except NoSuchElementException as e:
+        return {"learn": False, "msg": f"요소를 찾을 수 없음: {e}"}
+    except TimeoutException:
+        return {"learn": True, "msg": "기타 강의로 간주됨"}
     except Exception as e:
         return {"learn": False, "msg": f"툴 컨텐츠 프레임 전환 실패: {e}"}
 
