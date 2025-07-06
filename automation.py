@@ -4,8 +4,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
-#TODO: 2. 예외 처리 분기점 추가 및 메시지 리턴
 
 def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, str]]:
     """
@@ -24,12 +24,13 @@ def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, 
     Raises:
         Exception: 로그인 과정에서 발생하는 모든 예외를 처리하여 실패 메시지로 반환
     """
-        # 로그인 페이지로 이동  
+    # 로그인 페이지로 이동  
     driver.get("https://learning.hanyang.ac.kr/")
 
     try:
-        login_button = EC.presence_of_element_located((By.CSS_SELECTOR, "#login_btn"))
-        WebDriverWait(driver, 10).until(login_button)
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#login_btn"))
+        )
         # 로그인 버튼 클릭
         driver.find_element(By.CSS_SELECTOR, "#uid").send_keys(id)
         driver.find_element(By.CSS_SELECTOR, "#upw").send_keys(pwd)
@@ -44,10 +45,14 @@ def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, 
 
         return {"login": True, "msg": "로그인 성공"}
         # 로그인 버튼 클릭
+    except TimeoutException:
+        return {"login": False, "msg": "로그인 페이지 로드 실패: 시간 초과"}
+    except NoSuchElementException as e:
+        return {"login": False, "msg": f"로그인 요소 찾기 실패: {e}"}
     except Exception as e:
         return {"login": False, "msg": f"로그인 실패: {e}"}
 
-def get_cources(driver: webdriver.Chrome) -> List[str]:
+def get_courses(driver: webdriver.Chrome) -> List[str]:
     """
     대시보드에서 등록된 강의 목록을 가져옵니다.
     
@@ -71,7 +76,7 @@ def get_cources(driver: webdriver.Chrome) -> List[str]:
         EC.presence_of_element_located((By.CSS_SELECTOR, "#DashboardCard_Container > div > div"))
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "#DashboardCard_Container > div > div"))
-        )
+        ) # 대시보드 카드 컨테이너가 로드될 때까지 기다리기
         elements = driver.find_elements(By.CSS_SELECTOR, "#DashboardCard_Container > div > div")
         for element in elements:
             try:
@@ -168,6 +173,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
         return {"learn": False, "msg": f"툴 컨텐츠 프레임 전환 실패: {e}"}
 
     try:
+        #이건 iframe이 아니라 단순 span입니다. frame_to_be_available_and_switch_to_it은 iframe 요소에만 써야 하며 여기선 잘못된 로직입니다. 라는 의견 있음
         WebDriverWait(driver, 0.5).until(
             EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-pdf-component > div.xnbc-progress-info-container > span:nth-child(2)"))
         ) #pdf강의일 경우
@@ -197,7 +203,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
             )# 확인 버튼이 클릭 가능할 때까지 기다리기
             driver.find_element(By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn").click()
         except Exception as e:
-            return {"learn": False, "msg": f"동영상 강의 요소 없음: {e}"}
+            pass # 확인 버튼이 없으면 그냥 넘어감
         # 이전 iframe으로 돌아가기
         driver.switch_to.default_content()
         try:
@@ -205,7 +211,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
                 EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#tool_content"))
             )#수강 진행도 업데이트를 위해 전환함
         except Exception as e:
-            return {"learn": False, "msg": f"툴 컨텐츠 프레임 전환 실패: {e}"}
+            return {"learn": False, "msg": f"수강 진행도 확인을 위한 툴 컨텐츠 프레임 전환 실패: {e}"}
         while True:
             try:
                 WebDriverWait(driver, 0.5).until(
@@ -215,7 +221,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button"))
                 )
             except Exception as e:
-                return {"learn": False, "msg": f"동영상 강의 진행 상태 요소 없음: {e}"}
+                return {"learn": False, "msg": f"동영상 강의 진행 확인 상태 요소 없음: {e}"}
             complete_status = driver.find_elements(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3) > span")
             if complete_status and "완료" == complete_status[0].text:
                 break
@@ -227,6 +233,6 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
 if __name__ == "__main__":
     driver = init_driver()
     print(login(driver, "kth88", "Noohackingplz08!"))
-    for lecture in get_lectures(driver, get_cources(driver)):
+    for lecture in get_lectures(driver, get_courses(driver)):
         print(learn_lecture(driver, lecture), '\n' + lecture)
     driver.quit()
