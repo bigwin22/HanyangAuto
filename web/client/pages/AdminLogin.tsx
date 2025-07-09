@@ -4,6 +4,9 @@ import { Eye, EyeOff } from "lucide-react";
 
 export default function AdminLogin() {
   const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [adminId, setAdminId] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   const toggleAdminPasswordVisibility = () => {
@@ -18,8 +21,25 @@ export default function AdminLogin() {
     navigate("admin/change-password");
   };
 
-  const navigateToDashboard = () => {
-    navigate("admin/dashboard");
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    // 실제 API로 로그인 요청
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminId, adminPassword }),
+      });
+      if (res.ok) {
+        navigate("admin/dashboard");
+      } else {
+        const data = await res.json();
+        setError(data.message || "로그인 실패");
+      }
+    } catch {
+      setError("서버 오류");
+    }
   };
 
   return (
@@ -31,15 +51,18 @@ export default function AdminLogin() {
           </h1>
         </div>
 
-        <form className="space-y-6">
+        <form className="space-y-6" onSubmit={handleAdminLogin}>
           <div>
             <label className="block text-[14px] font-medium text-[#374151] mb-2">
               관리자 ID
             </label>
             <input
               type="text"
+              value={adminId}
+              onChange={e => setAdminId(e.target.value)}
               className="w-full px-4 py-3 border border-[#D1D5DB] rounded-[12px] focus:outline-none focus:ring-2 focus:ring-[#6B7280] focus:border-transparent text-[16px] max-sm:py-2"
               placeholder="관리자 ID를 입력하세요"
+              required
             />
           </div>
 
@@ -50,8 +73,11 @@ export default function AdminLogin() {
             <div className="relative">
               <input
                 type={showAdminPassword ? "text" : "password"}
+                value={adminPassword}
+                onChange={e => setAdminPassword(e.target.value)}
                 className="w-full px-4 py-3 pr-12 border border-[#D1D5DB] rounded-[12px] focus:outline-none focus:ring-2 focus:ring-[#6B7280] focus:border-transparent text-[16px] max-sm:py-2"
                 placeholder="비밀번호를 입력하세요"
+                required
               />
               <button
                 type="button"
@@ -67,9 +93,10 @@ export default function AdminLogin() {
             </div>
           </div>
 
+          {error && <div className="text-red-500 text-sm">{error}</div>}
+
           <button
-            type="button"
-            onClick={navigateToDashboard}
+            type="submit"
             className="w-full bg-[#6B7280] text-white py-3 rounded-[12px] font-semibold text-[16px] hover:bg-[#4B5563] transition-colors duration-200 max-sm:py-2"
           >
             로그인

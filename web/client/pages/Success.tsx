@@ -1,12 +1,23 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import hanyangLogo from "../public/hanyang_logo.png";
 
 export default function Success() {
   const location = useLocation();
   const navigate = useNavigate();
-  // Assume userId is passed via state (e.g., navigate('/success', { state: { userId: 'student001' } }))
-  const userId = location.state?.userId || "";
+  const [userId, setUserId] = useState("");
+
+  useEffect(() => {
+    // 실제로는 location.state가 아니라, 필요시 API에서 사용자 정보 조회
+    if (location.state?.userId) {
+      setUserId(location.state.userId);
+    } else {
+      // 예시: /api/user/me 등에서 정보 조회
+      fetch("/api/user/me")
+        .then(res => res.json())
+        .then(data => setUserId(data.userId || ""));
+    }
+  }, [location.state]);
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#87CEEB] to-[#4682B4] flex items-center justify-center p-4">

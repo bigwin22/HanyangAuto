@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Users, CheckCircle, Clock, AlertTriangle, Trash2 } from "lucide-react";
 
@@ -16,48 +16,18 @@ export default function Dashboard() {
   const [showUserCourses, setShowUserCourses] = useState(false);
   const [showUserLogs, setShowUserLogs] = useState(false);
 
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: 1,
-      registeredDate: "2024-01-15 09:30",
-      userId: "student001",
-      status: "active",
-      courses: ["컴퓨터과학개론", "자료구조", "알고리즘"],
-    },
-    {
-      id: 2,
-      registeredDate: "2024-01-14 14:22",
-      userId: "student002",
-      status: "completed",
-      courses: ["미적분학", "선형대수", "통계학"],
-    },
-    {
-      id: 3,
-      registeredDate: "2024-01-13 11:45",
-      userId: "student003",
-      status: "error",
-      courses: ["물리학개론"],
-    },
-    {
-      id: 4,
-      registeredDate: "2024-01-12 16:18",
-      userId: "student004",
-      status: "active",
-      courses: ["화학개론", "유기화학"],
-    },
-    {
-      id: 5,
-      registeredDate: "2024-01-11 08:55",
-      userId: "student005",
-      status: "completed",
-      courses: ["경제학원론", "미시경제학", "거시경제학"],
-    },
-  ]);
+  // 실제 API에서 유저 데이터 받아오기
+  const [users, setUsers] = useState<User[]>([]);
+  useEffect(() => {
+    // TODO: 실제 API 엔드포인트로 교체
+    fetch("/api/admin/users")
+      .then((res) => res.json())
+      .then((data) => setUsers(data))
+      .catch(() => setUsers([]));
+  }, []);
 
   const totalUsers = users.length;
-  const completedUsers = users.filter(
-    (user) => user.status === "completed",
-  ).length;
+  const completedUsers = users.filter((user) => user.status === "completed").length;
   const activeUsers = users.filter((user) => user.status === "active").length;
   const errorUsers = users.filter((user) => user.status === "error").length;
 

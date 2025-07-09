@@ -1,23 +1,39 @@
-import React from "react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import hanyangLogo from "../public/hanyang_logo.png";
 
 export default function Index() {
   const [showPassword, setShowPassword] = useState(false);
+  const [userId, setUserId] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // 실제로는 입력값을 받아야 하지만, 예시로 userId를 고정
-    navigate('/success', { state: { userId: 'sample_id' } });
+    setError("");
+    // 실제 API로 로그인 요청
+    try {
+      const res = await fetch("/api/user/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, password }),
+      });
+      if (res.ok) {
+        navigate("/success", { state: { userId } });
+      } else {
+        const data = await res.json();
+        setError(data.message || "로그인 실패");
+      }
+    } catch {
+      setError("서버 오류");
+    }
   };
-
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#87CEEB] to-[#4682B4] flex items-center justify-center p-4">
@@ -40,8 +56,11 @@ export default function Index() {
             </label>
             <input
               type="text"
+              value={userId}
+              onChange={e => setUserId(e.target.value)}
               className="w-full px-4 py-3 border border-[#D1D5DB] rounded-[12px] focus:outline-none focus:ring-2 focus:ring-[#003366] focus:border-transparent text-[16px] max-sm:py-2"
               placeholder="한양대학교 아이디를 입력하세요"
+              required
             />
           </div>
 
@@ -52,8 +71,11 @@ export default function Index() {
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
                 className="w-full px-4 py-3 pr-12 border border-[#D1D5DB] rounded-[12px] focus:outline-none focus:ring-2 focus:ring-[#003366] focus:border-transparent text-[16px] max-sm:py-2"
                 placeholder="비밀번호를 입력하세요"
+                required
               />
               <button
                 type="button"
@@ -68,6 +90,8 @@ export default function Index() {
               </button>
             </div>
           </div>
+
+          {error && <div className="text-red-500 text-sm">{error}</div>}
 
           <button
             type="submit"
