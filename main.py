@@ -54,12 +54,14 @@ ALLOWED_ROUTES = [
     "/admin/login",
     "/admin/dashboard",
     "/admin/change-password",
+    "/success",
 ]
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/admin/login", response_class=HTMLResponse)
 @app.get("/admin/dashboard", response_class=HTMLResponse)
 @app.get("/admin/change-password", response_class=HTMLResponse)
+@app.get("/success", response_class=HTMLResponse)
 def serve_spa(request: Request):
     index_path = os.path.join(SPA_DIST, "index.html")
     if os.path.exists(index_path):
