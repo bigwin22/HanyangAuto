@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, status, Depends
+from fastapi import FastAPI, Request, HTTPException, status, Depends, Path
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -130,6 +130,12 @@ def user_me():
     if not user:
         return JSONResponse(status_code=404, content={"message": "사용자 없음"})
     return {"userId": user[1]}
+
+@app.delete("/api/admin/user/{user_id}")
+def delete_user(user_id: int = Path(...)):
+    db.delete_learned_lectures(user_id)
+    db.delete_user_by_num(user_id)
+    return {"success": True, "deleted": user_id}
 
 # Catch-all for all other routes: return 404
 @app.get("/{full_path:path}", response_class=HTMLResponse)

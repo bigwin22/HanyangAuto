@@ -56,12 +56,17 @@ export default function Dashboard() {
     setShowUserCourses(false);
   };
 
-  const deleteUser = (userId: number) => {
-    setUsers(users.filter((user) => user.id !== userId));
-    if (selectedUser && selectedUser.id === userId) {
-      setSelectedUser(null);
-      setShowUserCourses(false);
-      setShowUserLogs(false);
+  const deleteUser = async (userId: number) => {
+    const res = await fetch(`/api/admin/user/${userId}`, { method: "DELETE" });
+    if (res.ok) {
+      setUsers(users.filter((user) => user.id !== userId));
+      if (selectedUser && selectedUser.id === userId) {
+        setSelectedUser(null);
+        setShowUserCourses(false);
+        setShowUserLogs(false);
+      }
+    } else {
+      alert("삭제 실패");
     }
   };
 

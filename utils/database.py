@@ -111,6 +111,13 @@ def delete_user(user_id):
     conn.commit()
     conn.close()
 
+def delete_user_by_num(user_num):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('DELETE FROM User WHERE NUM = ?', (user_num,))
+    conn.commit()
+    conn.close()
+
 def delete_learned_lectures(account_id):
     conn = get_conn()
     c = conn.cursor()
