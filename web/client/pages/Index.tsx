@@ -12,6 +12,12 @@ export default function Index() {
     setShowPassword(!showPassword);
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // 실제로는 입력값을 받아야 하지만, 예시로 userId를 고정
+    navigate('/success', { state: { userId: 'sample_id' } });
+  };
+
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#87CEEB] to-[#4682B4] flex items-center justify-center p-4">
@@ -27,7 +33,7 @@ export default function Index() {
           </h1>
         </div>
 
-        <form className="space-y-6">
+        <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
             <label className="block text-[14px] font-medium text-[#374151] mb-2">
               아이디
