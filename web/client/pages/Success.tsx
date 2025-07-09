@@ -1,5 +1,6 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import hanyangLogo from "../public/hanyang_logo.png";
 
 export default function Success() {
   const location = useLocation();
@@ -12,7 +13,7 @@ export default function Success() {
       <div className="bg-white rounded-[20px] shadow-[0_20px_60px_rgba(0,0,0,0.15)] p-8 w-full max-w-[400px] max-sm:p-6">
         <div className="flex flex-col items-center mb-8">
           <img
-            src="/hanyang_logo.png"
+            src={hanyangLogo}
             alt="한양대학교 로고"
             className="w-[80px] h-[80px] mb-4 rounded-[12px]"
           />
