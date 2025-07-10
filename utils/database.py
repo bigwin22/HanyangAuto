@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS User (
     NUM INTEGER PRIMARY KEY AUTOINCREMENT,
     ID TEXT UNIQUE NOT NULL,
     PWD_Encrypted TEXT NOT NULL,
-    Created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    Created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    Stae TEXT NOT NULL
 );
 '''
 
@@ -45,10 +46,10 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_user(user_id, pwd_encrypted):
+def add_user(user_id, pwd_encrypted, stae="active"):
     conn = get_conn()
     c = conn.cursor()
-    c.execute('INSERT INTO User (ID, PWD_Encrypted) VALUES (?, ?)', (user_id, pwd_encrypted))
+    c.execute('INSERT INTO User (ID, PWD_Encrypted, Stae) VALUES (?, ?, ?)', (user_id, pwd_encrypted, stae))
     conn.commit()
     conn.close()
 
