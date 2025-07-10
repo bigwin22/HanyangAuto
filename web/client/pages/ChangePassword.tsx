@@ -21,7 +21,7 @@ export default function ChangePassword() {
   };
 
   const navigateToAdminLogin = () => {
-    navigate("admin/login");
+    navigate("/admin/login");
   };
 
   return (
