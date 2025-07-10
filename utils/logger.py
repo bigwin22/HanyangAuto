@@ -2,6 +2,7 @@ import os
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from logging.handlers import RotatingFileHandler
 
 # 서울 시간대
 KST = timezone(timedelta(hours=9))
@@ -15,6 +16,9 @@ LOG_LEVELS = {
     'ERROR': logging.ERROR,
     'DEBUG': logging.DEBUG,
 }
+
+MAX_LOG_SIZE = 5 * 1024 * 1024  # 5MB
+BACKUP_COUNT = 10  # log1~log10까지 유지
 
 def get_log_path(log_type: str = 'system', user_id: Optional[str] = None):
     today = datetime.now(KST).strftime('%Y%m%d')
@@ -38,7 +42,9 @@ class HanyangLogger:
         self.logger = logging.getLogger(f'{log_type}_{user_id or "system"}')
         self.logger.setLevel(logging.DEBUG)
         if not self.logger.handlers:
-            handler = logging.FileHandler(self.log_path, encoding='utf-8')
+            handler = RotatingFileHandler(
+                self.log_path, maxBytes=MAX_LOG_SIZE, backupCount=BACKUP_COUNT, encoding='utf-8'
+            )
             formatter = logging.Formatter('[%(asctime)s][%(subject)s][%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
