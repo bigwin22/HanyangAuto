@@ -36,7 +36,7 @@ export default function Dashboard() {
   };
 
   const navigateToChangePassword = () => {
-    navigate("/change-password");
+    navigate("/admin/change-password");
   };
 
   const selectUser = (user: User) => {

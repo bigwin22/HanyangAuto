@@ -44,6 +44,11 @@ def init_db():
     c.execute(ADMIN_TABLE)
     c.execute(LEARNED_LECTURE_TABLE)
     conn.commit()
+    # 어드민 계정이 없으면 생성
+    c.execute('SELECT * FROM Admin WHERE NUM = 1')
+    if not c.fetchone():
+        c.execute('INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', ('admin', 'admin'))
+        conn.commit()
     conn.close()
 
 def add_user(user_id, pwd_encrypted, stae="active"):
