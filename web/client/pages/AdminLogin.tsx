@@ -18,7 +18,7 @@ export default function AdminLogin() {
   };
 
   const navigateToChangePassword = () => {
-    navigate("admin/change-password");
+    navigate("/admin/change-password");
   };
 
   const handleAdminLogin = async (e: React.FormEvent) => {
@@ -32,7 +32,7 @@ export default function AdminLogin() {
         body: JSON.stringify({ adminId, adminPassword }),
       });
       if (res.ok) {
-        navigate("admin/dashboard");
+        navigate("/admin/dashboard");
       } else {
         const data = await res.json();
         setError(data.message || "로그인 실패");
