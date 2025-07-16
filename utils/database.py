@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS Learned_Lecture (
 '''
 
 # AES 암호화/복호화 키 (실서비스는 환경변수 등 안전한 방식으로 관리)
-SECRET_KEY = b'hanyang_secretkey_'  # 16/24/32 bytes
+SECRET_KEY = b'hanyangSecretkey'  # 16 bytes (개발용 하드코딩)
 
 # 비밀번호 암호화 함수
 def encrypt_password(plain_pwd: str) -> str:
