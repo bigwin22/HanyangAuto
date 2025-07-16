@@ -57,7 +57,7 @@ export default function Dashboard() {
     setShowUserCourses(false);
     setUserLog("로그 불러오는 중...");
     try {
-      const res = await fetch(`/api/admin/user/${user.id}/logs`);
+      const res = await fetch(`/api/admin/user/${user.userId}/logs`);
       if (res.ok) {
         const text = await res.text();
         setUserLog(text);

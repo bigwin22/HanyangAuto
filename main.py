@@ -199,12 +199,12 @@ def delete_user(user_id: int = Path(...)):
     logger.info('user', f'유저 삭제: {user_id}')
     return {"success": True, "deleted": user_id}
 
-@app.get("/api/admin/user/{user_id}/logs")
-def get_user_logs(user_id: int):
+@app.get("/api/admin/user/{userId}/logs")
+def get_user_logs(userId: str):
     from datetime import datetime
     logs_base = os.path.join(os.path.dirname(__file__), 'logs')
     today = datetime.now().strftime('%Y%m%d')
-    user_log_dir = os.path.join(logs_base, today, 'user', str(user_id))
+    user_log_dir = os.path.join(logs_base, today, 'user', str(userId))
     if not os.path.exists(user_log_dir):
         return PlainTextResponse("로그 파일 없음", status_code=404)
     log_files = sorted(glob.glob(os.path.join(user_log_dir, 'log*.log')))
