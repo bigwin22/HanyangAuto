@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException, status, Depends, Path
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +9,7 @@ from automation import run_user_automation
 from apscheduler.schedulers.background import BackgroundScheduler
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import glob
 
 app = FastAPI()
 db.init_db()
@@ -167,6 +168,21 @@ def delete_user(user_id: int = Path(...)):
     db.delete_learned_lectures(user_id)
     db.delete_user_by_num(user_id)
     return {"success": True, "deleted": user_id}
+
+@app.get("/api/admin/user/{user_id}/logs")
+def get_user_logs(user_id: int):
+    from datetime import datetime
+    logs_base = os.path.join(os.path.dirname(__file__), 'logs')
+    today = datetime.now().strftime('%Y%m%d')
+    user_log_dir = os.path.join(logs_base, today, 'user', str(user_id))
+    if not os.path.exists(user_log_dir):
+        return PlainTextResponse("로그 파일 없음", status_code=404)
+    log_files = sorted(glob.glob(os.path.join(user_log_dir, 'log*.log')))
+    if not log_files:
+        return PlainTextResponse("로그 파일 없음", status_code=404)
+    with open(log_files[-1], encoding='utf-8') as f:
+        content = f.read()
+    return PlainTextResponse(content)
 
 # Catch-all for all other routes: return 404
 @app.get("/{full_path:path}", response_class=HTMLResponse)

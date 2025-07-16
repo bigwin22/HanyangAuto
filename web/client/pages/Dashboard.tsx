@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showUserCourses, setShowUserCourses] = useState(false);
   const [showUserLogs, setShowUserLogs] = useState(false);
+  const [userLog, setUserLog] = useState<string>("");
 
   // 실제 API에서 유저 데이터 받아오기
   const [users, setUsers] = useState<User[]>([]);
@@ -50,10 +51,22 @@ export default function Dashboard() {
     }
   };
 
-  const showUserStatus = (user: User) => {
+  const showUserStatus = async (user: User) => {
     setSelectedUser(user);
     setShowUserLogs(true);
     setShowUserCourses(false);
+    setUserLog("로그 불러오는 중...");
+    try {
+      const res = await fetch(`/api/admin/user/${user.id}/logs`);
+      if (res.ok) {
+        const text = await res.text();
+        setUserLog(text);
+      } else {
+        setUserLog("로그 파일 없음");
+      }
+    } catch {
+      setUserLog("로그 불러오기 실패");
+    }
   };
 
   const deleteUser = async (userId: number) => {
@@ -276,13 +289,8 @@ export default function Dashboard() {
               </h3>
             </div>
             <div className="p-6 max-sm:p-4">
-              <div className="bg-[#111827] rounded-[8px] p-4 font-mono text-[12px] text-[#10B981] overflow-x-auto max-sm:text-[10px]">
-                <div>[2024-01-15 14:30:25] 사용자 로그인 성공</div>
-                <div>[2024-01-15 14:30:26] 강의 목록 조회</div>
-                <div>[2024-01-15 14:30:28] 컴퓨터과학개론 강의 접속</div>
-                <div>[2024-01-15 14:45:12] 강의 진도율 업데이트: 75%</div>
-                <div>[2024-01-15 14:45:15] 퀴즈 응답 제출</div>
-                <div>[2024-01-15 14:50:33] 세션 종료</div>
+              <div className="bg-[#111827] rounded-[8px] p-4 font-mono text-[12px] text-[#10B981] overflow-x-auto max-sm:text-[10px]" style={{whiteSpace: 'pre-wrap'}}>
+                {userLog}
               </div>
             </div>
           </div>
