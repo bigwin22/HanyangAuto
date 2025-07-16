@@ -7,7 +7,7 @@ from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
 
-def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, str]]:
+def login(driver: webdriver.Chrome, id: str, pwd: str, logger=None) -> Dict[str, Union[bool, str]]:
     """
     한양대학교 Learning Management System에 로그인합니다.
     
@@ -15,6 +15,7 @@ def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, 
         driver (webdriver.Chrome): Selenium Chrome WebDriver 인스턴스
         id (str): 로그인 아이디
         pwd (str): 로그인 비밀번호
+        logger (Optional): 로그 기록용 객체
     
     Returns:
         Dict[str, Union[bool, str]]: 로그인 성공 여부와 메시지를 포함한 딕셔너리
@@ -39,17 +40,27 @@ def login(driver: webdriver.Chrome, id: str, pwd: str) -> Dict[str, Union[bool, 
         try:
             WebDriverWait(driver, 5).until(EC.alert_is_present())
             alert = driver.switch_to.alert
+            alert_text = alert.text
+            if logger:
+                logger.info('login', f'로그인 팝업: {alert_text}')
             alert.accept()
         except Exception as e:
             pass
-
+        if logger:
+            logger.info('login', '로그인 성공')
         return {"login": True, "msg": "로그인 성공"}
         # 로그인 버튼 클릭
     except TimeoutException:
+        if logger:
+            logger.error('login', '로그인 페이지 로드 실패: 시간 초과')
         return {"login": False, "msg": "로그인 페이지 로드 실패: 시간 초과"}
     except NoSuchElementException as e:
+        if logger:
+            logger.error('login', f'로그인 요소 찾기 실패: {e}')
         return {"login": False, "msg": f"로그인 요소 찾기 실패: {e}"}
     except Exception as e:
+        if logger:
+            logger.error('login', f'로그인 실패: {e}')
         return {"login": False, "msg": f"로그인 실패: {e}"}
 
 def get_courses(driver: webdriver.Chrome) -> List[str]:
@@ -240,32 +251,41 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
     Args:
         user_id (str): 한양대 로그인 ID
         pwd (str): 로그인 비밀번호
-        learned_lectures (list): 이미 수강한 강의 URL 목
+        learned_lectures (list): 이미 수강한 강의 URL 목록
         db_add_learned (callable): (account_id, lecture_id)로 DB에 수강 완료 기록하는 함수
     Returns:
         dict: {'success': bool, 'msg': str, 'learned': list}
     """
     from utils.selenium_utils import init_driver
+    from utils.logger import HanyangLogger
     driver = None
+    user_logger = HanyangLogger('user', user_id=str(user_id))
     try:
         driver = init_driver()
-        login_result = login(driver, user_id, pwd)
+        login_result = login(driver, user_id, pwd, logger=user_logger)
         if not login_result.get('login'):
             return {'success': False, 'msg': login_result.get('msg', '로그인 실패'), 'learned': []}
+        user_logger.info('automation', '강의 목록 조회 시작')
         course_list = get_courses(driver)
         if not course_list:
+            user_logger.info('automation', '강의 목록 없음')
             return {'success': False, 'msg': '강의 목록 없음', 'learned': []}
         lecture_list = get_lectures(driver, course_list)
         # 중복 수강 방지
         to_learn = [lec for lec in lecture_list if lec not in learned_lectures]
         learned = []
         for lec_url in to_learn:
+            user_logger.info('lecture', f'강의 수강 시작: {lec_url}')
             result = learn_lecture(driver, lec_url)
             if result.get('learn'):
+                user_logger.info('lecture', f'강의 수강 완료: {lec_url}')
                 learned.append(lec_url)
                 db_add_learned(user_id, lec_url)
+            else:
+                user_logger.error('lecture', f'강의 수강 실패: {lec_url} ({result.get("msg", "")})')
         return {'success': True, 'msg': f'{len(learned)}개 강의 수강 완료', 'learned': learned}
     except Exception as e:
+        user_logger.error('automation', f'자동화 오류: {e}')
         return {'success': False, 'msg': f'자동화 오류: {e}', 'learned': []}
     finally:
         if driver:

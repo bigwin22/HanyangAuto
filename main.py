@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import glob
+from utils.logger import HanyangLogger
 
 app = FastAPI()
 db.init_db()
@@ -102,8 +103,20 @@ def db_add_learned(user_id, lecture_id):
 
 # 유저 자동화 실행 (비동기)
 def run_automation_for_user(user_id, pwd):
+    system_logger = HanyangLogger('system')
+    user_logger = HanyangLogger('user', user_id=str(user_id))
     learned = db.get_learned_lectures(db.get_user_by_id(user_id)[0])
-    run_user_automation(user_id, pwd, learned, db_add_learned)
+    system_logger.info('automation', f'자동화 시작: {user_id}')
+    user_logger.info('automation', '자동화 시작')
+    system_logger.info('automation', f'강의 목록 조회 시작: {user_id}')
+    user_logger.info('automation', '강의 목록 조회 시작')
+    result = run_user_automation(user_id, pwd, learned, db_add_learned)
+    if result['success']:
+        system_logger.info('automation', f'자동화 완료: {user_id} ({result["msg"]})')
+        user_logger.info('automation', f'자동화 완료: {result["msg"]}')
+    else:
+        system_logger.error('automation', f'자동화 실패: {user_id} ({result["msg"]})')
+        user_logger.error('automation', f'자동화 실패: {result["msg"]}')
 
 # 전체 유저 자동화 (병렬)
 def run_automation_for_all_users():
@@ -120,6 +133,9 @@ scheduler.start()
 # 서버 시작 시 자동화
 threading.Thread(target=run_automation_for_all_users, daemon=True).start()
 
+# 서버 시작 시 로그 기록 (폴더 자동 생성)
+HanyangLogger('system').info('system', '서버가 시작되었습니다.')
+
 @app.get("/api/admin/users")
 def get_admin_users():
     users = []
@@ -135,15 +151,27 @@ def get_admin_users():
 
 @app.post("/api/user/login")
 def user_login(req: UserLoginRequest):
+    logger = HanyangLogger('system')
+    user_logger = HanyangLogger('user', user_id=req.userId)
     user = db.get_user_by_id(req.userId)
     if not user:
         db.add_user(req.userId, req.password)  # TODO: 암호화 필요
         user = db.get_user_by_id(req.userId)
-        # 신규 등록자: 자동화 실행
+        logger.info('user', f'신규 유저 등록: {req.userId}')
+        user_logger.info('user', '신규 유저 등록')
+        logger.info('user', f'유저 로그인: {req.userId}')
+        user_logger.info('user', '유저 로그인')
+        logger.info('automation', f'자동화 준비 시작: {req.userId}')
+        user_logger.info('automation', '자동화 준비 시작')
         threading.Thread(target=run_automation_for_user, args=(req.userId, req.password), daemon=True).start()
     else:
         db.update_user_pwd(req.userId, req.password)  # TODO: 암호화 필요
-        # 기존 등록자: 자동화 실행
+        logger.info('user', f'기존 유저 비밀번호 업데이트: {req.userId}')
+        user_logger.info('user', '기존 유저 비밀번호 업데이트')
+        logger.info('user', f'유저 로그인: {req.userId}')
+        user_logger.info('user', '유저 로그인')
+        logger.info('automation', f'자동화 준비 시작: {req.userId}')
+        user_logger.info('automation', '자동화 준비 시작')
         threading.Thread(target=run_automation_for_user, args=(req.userId, req.password), daemon=True).start()
     return {"success": True, "userId": req.userId}
 
@@ -165,8 +193,10 @@ def user_me():
 
 @app.delete("/api/admin/user/{user_id}")
 def delete_user(user_id: int = Path(...)):
+    logger = HanyangLogger('system')
     db.delete_learned_lectures(user_id)
     db.delete_user_by_num(user_id)
+    logger.info('user', f'유저 삭제: {user_id}')
     return {"success": True, "deleted": user_id}
 
 @app.get("/api/admin/user/{user_id}/logs")
