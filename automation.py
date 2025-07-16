@@ -44,6 +44,15 @@ def login(driver: webdriver.Chrome, id: str, pwd: str, logger=None) -> Dict[str,
             if logger:
                 logger.info('login', f'로그인 팝업: {alert_text}')
             alert.accept()
+            # 로그인 성공 여부를 #global_nav_profile_link 요소로 검증
+            try:
+                WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "#global_nav_profile_link"))
+                )
+            except Exception as e:
+                if logger:
+                    logger.error('login', f'로그인 실패: 프로필 링크 없음 ({e})')
+                return {"login": False, "msg": "로그인 실패: 프로필 링크 없음"}
         except Exception as e:
             pass
         if logger:
