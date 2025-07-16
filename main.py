@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import glob
 from utils.logger import HanyangLogger
+from utils.database import decrypt_password
 
 app = FastAPI()
 db.init_db()
@@ -106,6 +107,10 @@ def run_automation_for_user(user_id, pwd):
     system_logger = HanyangLogger('system')
     user_logger = HanyangLogger('user', user_id=str(user_id))
     learned = db.get_learned_lectures(db.get_user_by_id(user_id)[0])
+    # DB에서 비밀번호 복호화
+    user = db.get_user_by_id(user_id)
+    if user:
+        pwd = decrypt_password(user[2])
     system_logger.info('automation', f'자동화 시작: {user_id}')
     user_logger.info('automation', '자동화 시작')
     system_logger.info('automation', f'강의 목록 조회 시작: {user_id}')

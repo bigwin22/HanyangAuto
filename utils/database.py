@@ -1,6 +1,9 @@
 import os
 import sqlite3
 from datetime import datetime
+import base64
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'hanyang.db')
 
@@ -32,6 +35,26 @@ CREATE TABLE IF NOT EXISTS Learned_Lecture (
 );
 '''
 
+# AES 암호화/복호화 키 (실서비스는 환경변수 등 안전한 방식으로 관리)
+SECRET_KEY = b'hanyang_secretkey_'  # 16/24/32 bytes
+
+# 비밀번호 암호화 함수
+def encrypt_password(plain_pwd: str) -> str:
+    cipher = AES.new(SECRET_KEY, AES.MODE_CBC)
+    ct_bytes = cipher.encrypt(pad(plain_pwd.encode('utf-8'), AES.block_size))
+    iv = base64.b64encode(cipher.iv).decode('utf-8')
+    ct = base64.b64encode(ct_bytes).decode('utf-8')
+    return f'{iv}:{ct}'
+
+# 비밀번호 복호화 함수
+def decrypt_password(enc_pwd: str) -> str:
+    iv, ct = enc_pwd.split(':')
+    iv = base64.b64decode(iv)
+    ct = base64.b64decode(ct)
+    cipher = AES.new(SECRET_KEY, AES.MODE_CBC, iv)
+    pt = unpad(cipher.decrypt(ct), AES.block_size)
+    return pt.decode('utf-8')
+
 def get_conn():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
@@ -51,14 +74,16 @@ def init_db():
         conn.commit()
     conn.close()
 
-def add_user(user_id, pwd_encrypted, status="active"):
+def add_user(user_id, plain_pwd, status="active"):
+    pwd_encrypted = encrypt_password(plain_pwd)
     conn = get_conn()
     c = conn.cursor()
     c.execute('INSERT INTO User (ID, PWD_Encrypted, Status) VALUES (?, ?, ?)', (user_id, pwd_encrypted, status))
     conn.commit()
     conn.close()
 
-def update_user_pwd(user_id, pwd_encrypted):
+def update_user_pwd(user_id, plain_pwd):
+    pwd_encrypted = encrypt_password(plain_pwd)
     conn = get_conn()
     c = conn.cursor()
     c.execute('UPDATE User SET PWD_Encrypted = ? WHERE ID = ?', (pwd_encrypted, user_id))
