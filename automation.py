@@ -271,9 +271,14 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
     user_logger = HanyangLogger('user', user_id=str(user_id))
     try:
         driver = init_driver()
+        # 로그인 최대 2회 시도
         login_result = login(driver, user_id, pwd, logger=user_logger)
         if not login_result.get('login'):
-            return {'success': False, 'msg': login_result.get('msg', '로그인 실패'), 'learned': []}
+            user_logger.info('login', f'1차 로그인 실패: {login_result.get("msg", "로그인 실패")}, 재시도')
+            login_result = login(driver, user_id, pwd, logger=user_logger)
+            if not login_result.get('login'):
+                user_logger.error('login', f'2차 로그인 실패: {login_result.get("msg", "로그인 실패")}, 자동화 중단')
+                return {'success': False, 'msg': login_result.get('msg', '로그인 실패'), 'learned': []}
         user_logger.info('automation', '강의 목록 조회 시작')
         course_list = get_courses(driver)
         if not course_list:
