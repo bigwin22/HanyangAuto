@@ -267,9 +267,11 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
     """
     from utils.selenium_utils import init_driver
     from utils.logger import HanyangLogger
+    from utils.database import update_user_status
     driver = None
     user_logger = HanyangLogger('user', user_id=str(user_id))
     try:
+        update_user_status(user_id, "active")
         driver = init_driver()
         # 로그인 최대 2회 시도
         login_result = login(driver, user_id, pwd, logger=user_logger)
@@ -278,11 +280,13 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
             login_result = login(driver, user_id, pwd, logger=user_logger)
             if not login_result.get('login'):
                 user_logger.error('login', f'2차 로그인 실패: {login_result.get("msg", "로그인 실패")}, 자동화 중단')
+                update_user_status(user_id, "error")
                 return {'success': False, 'msg': login_result.get('msg', '로그인 실패'), 'learned': []}
         user_logger.info('automation', '강의 목록 조회 시작')
         course_list = get_courses(driver)
         if not course_list:
             user_logger.info('automation', '강의 목록 없음')
+            update_user_status(user_id, "completed")
             return {'success': False, 'msg': '강의 목록 없음', 'learned': []}
         lecture_list = get_lectures(driver, course_list)
         # 중복 수강 방지
@@ -297,9 +301,14 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
                 db_add_learned(user_id, lec_url)
             else:
                 user_logger.error('lecture', f'강의 수강 실패: {lec_url} ({result.get("msg", "")})')
+                update_user_status(user_id, "error")
+        
+        # 모든 강의가 정상적으로 완료된 경우
+        update_user_status(user_id, "completed")
         return {'success': True, 'msg': f'{len(learned)}개 강의 수강 완료', 'learned': learned}
     except Exception as e:
         user_logger.error('automation', f'자동화 오류: {e}')
+        update_user_status(user_id, "error")
         return {'success': False, 'msg': f'자동화 오류: {e}', 'learned': []}
     finally:
         if driver:

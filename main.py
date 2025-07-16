@@ -144,7 +144,7 @@ def get_admin_users():
             "id": row[0],
             "userId": row[1],
             "registeredDate": row[3],
-            "status": "active",  # TODO: 실제 상태 로직으로 대체
+            "status": row[4],  # DB의 Stae 컬럼 값 사용
             "courses": db.get_learned_lectures(row[0]),
         })
     return users

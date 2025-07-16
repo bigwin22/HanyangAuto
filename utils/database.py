@@ -65,6 +65,13 @@ def update_user_pwd(user_id, pwd_encrypted):
     conn.commit()
     conn.close()
 
+def update_user_status(user_id, status):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('UPDATE User SET Stae = ? WHERE ID = ?', (status, user_id))
+    conn.commit()
+    conn.close()
+
 def get_user_by_id(user_id):
     conn = get_conn()
     c = conn.cursor()
