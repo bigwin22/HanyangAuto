@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS User (
     ID TEXT UNIQUE NOT NULL,
     PWD_Encrypted TEXT NOT NULL,
     Created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    Stae TEXT NOT NULL
+    Status TEXT NOT NULL
 );
 '''
 
@@ -51,10 +51,10 @@ def init_db():
         conn.commit()
     conn.close()
 
-def add_user(user_id, pwd_encrypted, stae="active"):
+def add_user(user_id, pwd_encrypted, status="active"):
     conn = get_conn()
     c = conn.cursor()
-    c.execute('INSERT INTO User (ID, PWD_Encrypted, Stae) VALUES (?, ?, ?)', (user_id, pwd_encrypted, stae))
+    c.execute('INSERT INTO User (ID, PWD_Encrypted, Status) VALUES (?, ?, ?)', (user_id, pwd_encrypted, status))
     conn.commit()
     conn.close()
 
@@ -68,7 +68,7 @@ def update_user_pwd(user_id, pwd_encrypted):
 def update_user_status(user_id, status):
     conn = get_conn()
     c = conn.cursor()
-    c.execute('UPDATE User SET Stae = ? WHERE ID = ?', (status, user_id))
+    c.execute('UPDATE User SET Status = ? WHERE ID = ?', (status, user_id))
     conn.commit()
     conn.close()
 

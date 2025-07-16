@@ -272,7 +272,7 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
     user_logger = HanyangLogger('user', user_id=str(user_id))
     try:
         try:
-            update_user_status(user_id, "active")
+            update_user_status(user_id, "active")  # Status 컬럼 사용
         except Exception as e:
             user_logger.error('automation', f'상태 업데이트 실패: {e}')
         try:
@@ -280,7 +280,7 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
         except Exception as e:
             user_logger.error('automation', f'드라이버 초기화 실패: {e}')
             try:
-                update_user_status(user_id, "error")
+                update_user_status(user_id, "error")  # Status 컬럼 사용
             except Exception as e2:
                 user_logger.error('automation', f'상태 업데이트 실패: {e2}')
             return {'success': False, 'msg': f'드라이버 초기화 실패: {e}', 'learned': []}
