@@ -70,7 +70,8 @@ def init_db():
     # 어드민 계정이 없으면 생성
     c.execute('SELECT * FROM Admin WHERE NUM = 1')
     if not c.fetchone():
-        c.execute('INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', ('admin', 'admin'))
+        from .database import encrypt_password
+        c.execute('INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', ('admin', encrypt_password('admin')))
         conn.commit()
     conn.close()
 
@@ -105,14 +106,16 @@ def get_user_by_id(user_id):
     conn.close()
     return user
 
-def add_admin(admin_id, pwd_encrypted):
+def add_admin(admin_id, plain_pwd):
+    pwd_encrypted = encrypt_password(plain_pwd)
     conn = get_conn()
     c = conn.cursor()
     c.execute('INSERT OR REPLACE INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', (admin_id, pwd_encrypted))
     conn.commit()
     conn.close()
 
-def update_admin_pwd(admin_id, pwd_encrypted):
+def update_admin_pwd(admin_id, plain_pwd):
+    pwd_encrypted = encrypt_password(plain_pwd)
     conn = get_conn()
     c = conn.cursor()
     c.execute('UPDATE Admin SET PWD_Encrypted = ?, Modified_at = CURRENT_TIMESTAMP WHERE ID = ?', (pwd_encrypted, admin_id))

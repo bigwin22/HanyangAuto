@@ -183,7 +183,7 @@ def user_login(req: UserLoginRequest):
 @app.post("/api/admin/login")
 def admin_login(req: AdminLoginRequest):
     admin = db.get_admin()
-    if not admin or admin[1] != req.adminId or admin[2] != req.adminPassword:
+    if not admin or admin[1] != req.adminId or decrypt_password(admin[2]) != req.adminPassword:
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"message": "로그인 실패"})
     return {"success": True, "adminId": req.adminId}
 
