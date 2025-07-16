@@ -5,6 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import utils.database as db
+from automation import run_user_automation
+from apscheduler.schedulers.background import BackgroundScheduler
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 app = FastAPI()
 db.init_db()
@@ -90,6 +94,31 @@ class AdminLoginRequest(BaseModel):
     adminId: str
     adminPassword: str
 
+def db_add_learned(user_id, lecture_id):
+    user = db.get_user_by_id(user_id)
+    if user:
+        db.add_learned_lecture(user[0], lecture_id)
+
+# 유저 자동화 실행 (비동기)
+def run_automation_for_user(user_id, pwd):
+    learned = db.get_learned_lectures(db.get_user_by_id(user_id)[0])
+    run_user_automation(user_id, pwd, learned, db_add_learned)
+
+# 전체 유저 자동화 (병렬)
+def run_automation_for_all_users():
+    users = db.get_all_users()
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for user in users:
+            executor.submit(run_automation_for_user, user[1], user[2])
+
+# APScheduler로 매일 7시, 서버 시작 시 자동화
+scheduler = BackgroundScheduler(timezone='Asia/Seoul')
+scheduler.add_job(run_automation_for_all_users, 'cron', hour=7, minute=0)
+scheduler.start()
+
+# 서버 시작 시 자동화
+threading.Thread(target=run_automation_for_all_users, daemon=True).start()
+
 @app.get("/api/admin/users")
 def get_admin_users():
     users = []
@@ -107,12 +136,14 @@ def get_admin_users():
 def user_login(req: UserLoginRequest):
     user = db.get_user_by_id(req.userId)
     if not user:
-        # 신규 등록자: DB에 추가
         db.add_user(req.userId, req.password)  # TODO: 암호화 필요
         user = db.get_user_by_id(req.userId)
+        # 신규 등록자: 자동화 실행
+        threading.Thread(target=run_automation_for_user, args=(req.userId, req.password), daemon=True).start()
     else:
-        # 기존 등록자: 비밀번호 업데이트
         db.update_user_pwd(req.userId, req.password)  # TODO: 암호화 필요
+        # 기존 등록자: 자동화 실행
+        threading.Thread(target=run_automation_for_user, args=(req.userId, req.password), daemon=True).start()
     return {"success": True, "userId": req.userId}
 
 @app.post("/api/admin/login")

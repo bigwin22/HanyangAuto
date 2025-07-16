@@ -234,6 +234,43 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
 
     return {"learn": True, "msg": f"강의 학습 완료: {lecture_url}"}
 
+def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_learned):
+    """
+    한 유저의 전체 자동 강의 수강 프로세스 실행
+    Args:
+        user_id (str): 한양대 로그인 ID
+        pwd (str): 로그인 비밀번호
+        learned_lectures (list): 이미 수강한 강의 URL 목
+        db_add_learned (callable): (account_id, lecture_id)로 DB에 수강 완료 기록하는 함수
+    Returns:
+        dict: {'success': bool, 'msg': str, 'learned': list}
+    """
+    from utils.selenium_utils import init_driver
+    driver = None
+    try:
+        driver = init_driver()
+        login_result = login(driver, user_id, pwd)
+        if not login_result.get('login'):
+            return {'success': False, 'msg': login_result.get('msg', '로그인 실패'), 'learned': []}
+        course_list = get_courses(driver)
+        if not course_list:
+            return {'success': False, 'msg': '강의 목록 없음', 'learned': []}
+        lecture_list = get_lectures(driver, course_list)
+        # 중복 수강 방지
+        to_learn = [lec for lec in lecture_list if lec not in learned_lectures]
+        learned = []
+        for lec_url in to_learn:
+            result = learn_lecture(driver, lec_url)
+            if result.get('learn'):
+                learned.append(lec_url)
+                db_add_learned(user_id, lec_url)
+        return {'success': True, 'msg': f'{len(learned)}개 강의 수강 완료', 'learned': learned}
+    except Exception as e:
+        return {'success': False, 'msg': f'자동화 오류: {e}', 'learned': []}
+    finally:
+        if driver:
+            driver.quit()
+
 if __name__ == "__main__":
     driver = init_driver()
     print(login(driver, "kth88", "Noohackingplz08!"))
