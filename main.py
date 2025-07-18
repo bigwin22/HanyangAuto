@@ -245,3 +245,10 @@ def catch_all(full_path: str):
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="index.html not found")
+
+# TODO: 추후 민감 API 보호(세션 인증) 적용 예정
+
+@app.post("/api/admin/logout")
+def admin_logout(request: Request):
+    request.session.pop("admin_logged_in", None)
+    return {"success": True, "message": "로그아웃 되었습니다."}

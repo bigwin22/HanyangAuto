@@ -44,6 +44,12 @@ export default function Dashboard() {
       });
   }, [navigate]);
 
+  // 로그아웃 핸들러
+  const handleLogout = async () => {
+    await fetch("/api/admin/logout", { method: "POST" });
+    navigate("/admin/login");
+  };
+
   if (!authChecked) {
     return null; // 또는 로딩 스피너 등
   }
@@ -137,7 +143,7 @@ export default function Dashboard() {
               비밀번호 변경
             </button>
             <button
-              onClick={navigateToMain}
+              onClick={handleLogout}
               className="px-4 py-2 bg-[#6B7280] text-white rounded-[8px] hover:bg-[#4B5563] text-[14px] max-sm:px-2 max-sm:text-[12px]"
             >
               로그아웃
