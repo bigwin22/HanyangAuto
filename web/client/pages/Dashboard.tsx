@@ -16,6 +16,8 @@ export default function Dashboard() {
   const [showUserCourses, setShowUserCourses] = useState(false);
   const [showUserLogs, setShowUserLogs] = useState(false);
   const [userLog, setUserLog] = useState<string>("");
+  const [authChecked, setAuthChecked] = useState(false);
+  const [auth, setAuth] = useState(false);
 
   // 실제 API에서 유저 데이터 받아오기
   const [users, setUsers] = useState<User[]>([]);
@@ -26,6 +28,28 @@ export default function Dashboard() {
       .then((data) => setUsers(data))
       .catch(() => setUsers([]));
   }, []);
+
+  useEffect(() => {
+    fetch("/api/admin/check-auth")
+      .then(res => {
+        if (res.status === 401) {
+          navigate("/admin/login");
+        } else if (res.ok) {
+          setAuth(true);
+        }
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        navigate("/admin/login");
+      });
+  }, [navigate]);
+
+  if (!authChecked) {
+    return null; // 또는 로딩 스피너 등
+  }
+  if (!auth) {
+    return null;
+  }
 
   const totalUsers = users.length;
   const completedUsers = users.filter((user) => user.status === "completed").length;

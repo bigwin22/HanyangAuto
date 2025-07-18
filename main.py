@@ -12,9 +12,16 @@ import threading
 import glob
 from utils.logger import HanyangLogger
 from utils.database import decrypt_password
+from starlette.middleware.sessions import SessionMiddleware
+
+#TODO:로그인안하면 대쉬보드 못 보게 하기
+#TODO:로그 깔끔하게
 
 app = FastAPI()
 db.init_db()
+
+# 세션 미들웨어 추가 (10분 유지)
+app.add_middleware(SessionMiddleware, secret_key="hanyang_secret_key", max_age=600)
 
 # CORS 허용 (개발용, 필요시 수정)
 app.add_middleware(
@@ -181,11 +188,19 @@ def user_login(req: UserLoginRequest):
     return {"success": True, "userId": req.userId}
 
 @app.post("/api/admin/login")
-def admin_login(req: AdminLoginRequest):
+def admin_login(req: AdminLoginRequest, request: Request):
     admin = db.get_admin()
     if not admin or admin[1] != req.adminId or decrypt_password(admin[2]) != req.adminPassword:
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"message": "로그인 실패"})
+    # 세션에 로그인 정보 저장
+    request.session["admin_logged_in"] = True
     return {"success": True, "adminId": req.adminId}
+
+@app.get("/api/admin/check-auth")
+def check_admin_auth(request: Request):
+    if not request.session.get("admin_logged_in"):
+        raise HTTPException(status_code=401, detail="로그인 필요")
+    return {"success": True}
 
 @app.get("/api/user/me")
 def user_me():
