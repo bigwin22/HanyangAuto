@@ -14,9 +14,6 @@ from utils.logger import HanyangLogger
 from utils.database import decrypt_password
 from starlette.middleware.sessions import SessionMiddleware
 
-#TODO:로그인안하면 대쉬보드 못 보게 하기
-#TODO:로그 깔끔하게
-
 app = FastAPI()
 db.init_db()
 
@@ -104,6 +101,11 @@ class AdminLoginRequest(BaseModel):
     adminId: str
     adminPassword: str
 
+def get_current_admin(request: Request):
+    if not request.session.get("admin_logged_in"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return True
+
 def db_add_learned(user_id, lecture_id):
     user = db.get_user_by_id(user_id)
     if user:
@@ -148,7 +150,7 @@ threading.Thread(target=run_automation_for_all_users, daemon=True).start()
 # 서버 시작 시 로그 기록 (폴더 자동 생성)
 HanyangLogger('system').info('system', '서버가 시작되었습니다.')
 
-@app.get("/api/admin/users")
+@app.get("/api/admin/users", dependencies=[Depends(get_current_admin)])
 def get_admin_users():
     users = []
     for row in db.get_all_users():
@@ -167,7 +169,7 @@ def user_login(req: UserLoginRequest):
     user_logger = HanyangLogger('user', user_id=req.userId)
     user = db.get_user_by_id(req.userId)
     if not user:
-        db.add_user(req.userId, req.password)  # TODO: 암호화 필요
+        db.add_user(req.userId, req.password)
         user = db.get_user_by_id(req.userId)
         logger.info('user', f'신규 유저 등록: {req.userId}')
         user_logger.info('user', '신규 유저 등록')
@@ -177,7 +179,7 @@ def user_login(req: UserLoginRequest):
         user_logger.info('automation', '자동화 준비 시작')
         threading.Thread(target=run_automation_for_user, args=(req.userId, req.password), daemon=True).start()
     else:
-        db.update_user_pwd(req.userId, req.password)  # TODO: 암호화 필요
+        db.update_user_pwd(req.userId, req.password)
         logger.info('user', f'기존 유저 비밀번호 업데이트: {req.userId}')
         user_logger.info('user', '기존 유저 비밀번호 업데이트')
         logger.info('user', f'유저 로그인: {req.userId}')
@@ -211,7 +213,7 @@ def user_me():
         return JSONResponse(status_code=404, content={"message": "사용자 없음"})
     return {"userId": user[1]}
 
-@app.delete("/api/admin/user/{user_id}")
+@app.delete("/api/admin/user/{user_id}", dependencies=[Depends(get_current_admin)])
 def delete_user(user_id: int = Path(...)):
     logger = HanyangLogger('system')
     db.delete_learned_lectures(user_id)
@@ -219,7 +221,7 @@ def delete_user(user_id: int = Path(...)):
     logger.info('user', f'유저 삭제: {user_id}')
     return {"success": True, "deleted": user_id}
 
-@app.get("/api/admin/user/{userId}/logs")
+@app.get("/api/admin/user/{userId}/logs", dependencies=[Depends(get_current_admin)])
 def get_user_logs(userId: str):
     from datetime import datetime
     logs_base = os.path.join(os.path.dirname(__file__), 'logs')
@@ -245,8 +247,6 @@ def catch_all(full_path: str):
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="index.html not found")
-
-# TODO: 추후 민감 API 보호(세션 인증) 적용 예정
 
 @app.post("/api/admin/logout")
 def admin_logout(request: Request):
