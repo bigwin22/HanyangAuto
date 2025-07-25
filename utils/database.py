@@ -4,6 +4,9 @@ from datetime import datetime
 import base64
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'hanyang.db')
 
@@ -36,7 +39,7 @@ CREATE TABLE IF NOT EXISTS Learned_Lecture (
 '''
 
 # AES 암호화/복호화 키 (실서비스는 환경변수 등 안전한 방식으로 관리)
-SECRET_KEY = b'hanyangSecretkey'  # 16 bytes (개발용 하드코딩)
+SECRET_KEY = os.getenv("DATABASE_SECRET_KEY", "default_secret_key_1234567890123456").encode('utf-8')  # 16 bytes (개발용 하드코딩)
 
 # 비밀번호 암호화 함수
 def encrypt_password(plain_pwd: str) -> str:
@@ -60,6 +63,14 @@ def get_conn():
     conn = sqlite3.connect(DB_PATH)
     return conn
 
+import secrets
+import string
+
+def generate_random_password(length=12):
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    password = ''.join(secrets.choice(alphabet) for i in range(length))
+    return password
+
 def init_db():
     conn = get_conn()
     c = conn.cursor()
@@ -71,7 +82,9 @@ def init_db():
     c.execute('SELECT * FROM Admin WHERE NUM = 1')
     if not c.fetchone():
         from .database import encrypt_password
-        c.execute('INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', ('admin', encrypt_password('admin')))
+        admin_password = generate_random_password()
+        print(f"Generated admin password: {admin_password}")
+        c.execute('INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', ('admin', encrypt_password(admin_password)))
         conn.commit()
     conn.close()
 

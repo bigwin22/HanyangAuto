@@ -20,6 +20,12 @@ LOG_LEVELS = {
 MAX_LOG_SIZE = 5 * 1024 * 1024  # 5MB
 BACKUP_COUNT = 10  # log1~log10까지 유지
 
+import re
+
+def sanitize_filename(filename):
+    """파일 이름으로 사용하기에 안전하지 않은 문자를 제거합니다."""
+    return re.sub(r'[^a-zA-Z0-9_.-]', '', filename)
+
 def get_log_path(log_type: str = 'system', user_id: Optional[str] = None):
     today = datetime.now(KST).strftime('%Y%m%d')
     base = os.path.join(LOG_BASE, today)
@@ -28,7 +34,8 @@ def get_log_path(log_type: str = 'system', user_id: Optional[str] = None):
     elif log_type == 'users':
         path = os.path.join(base, 'user', 'users')
     elif user_id:
-        path = os.path.join(base, 'user', user_id)
+        safe_user_id = sanitize_filename(user_id)
+        path = os.path.join(base, 'user', safe_user_id)
     else:
         path = os.path.join(base, 'system')
     os.makedirs(path, exist_ok=True)

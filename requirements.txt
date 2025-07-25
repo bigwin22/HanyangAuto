@@ -1,1 +1,2 @@
-pycryptodome 
+pycryptodome
+python-dotenv 

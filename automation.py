@@ -344,8 +344,9 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
                 user_logger.error('automation', f'드라이버 종료 실패: {e}')
 
 if __name__ == "__main__":
-    driver = init_driver()
-    print(login(driver, "kth88", "Noohackingplz08!"))
-    for lecture in get_lectures(driver, get_courses(driver)):
-        print(learn_lecture(driver, lecture), '\n' + lecture)
-    driver.quit()
+    # 아래 코드는 테스트 목적으로만 사용해야 합니다.
+    # 실제 운영 환경에서는 민감한 정보를 코드에 직접 포함하지 마세요.
+    # 예: driver = init_driver()
+    #     print(login(driver, "your_test_id", "your_test_password"))
+    #     driver.quit()
+    pass

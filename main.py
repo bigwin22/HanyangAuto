@@ -13,20 +13,27 @@ import glob
 from utils.logger import HanyangLogger
 from utils.database import decrypt_password
 from starlette.middleware.sessions import SessionMiddleware
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 db.init_db()
 
 # 세션 미들웨어 추가 (10분 유지)
-app.add_middleware(SessionMiddleware, secret_key="hanyang_secret_key", max_age=600)
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=os.getenv("SESSION_SECRET_KEY", "default_session_secret"), 
+    max_age=600
+)
 
 # CORS 허용 (개발용, 필요시 수정)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type"],
 )
 
 # Path to the built React app
