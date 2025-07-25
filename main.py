@@ -13,24 +13,35 @@ import glob
 from utils.logger import HanyangLogger
 from utils.database import decrypt_password
 from starlette.middleware.sessions import SessionMiddleware
-from dotenv import load_dotenv
 
-load_dotenv()
 
 app = FastAPI()
 db.init_db()
 
 # 세션 미들웨어 추가 (10분 유지)
+SESSION_KEY_FILE_PATH = os.path.join(os.path.dirname(__file__), 'data', 'session_key.key')
+
+def load_or_generate_session_key():
+    os.makedirs(os.path.dirname(SESSION_KEY_FILE_PATH), exist_ok=True)
+    if os.path.exists(SESSION_KEY_FILE_PATH):
+        with open(SESSION_KEY_FILE_PATH, 'rb') as f:
+            key = f.read()
+    else:
+        key = os.urandom(32)  # 32 bytes for a strong session key
+        with open(SESSION_KEY_FILE_PATH, 'wb') as f:
+            f.write(key)
+    return key
+
 app.add_middleware(
     SessionMiddleware, 
-    secret_key=os.getenv("SESSION_SECRET_KEY", "default_session_secret"), 
+    secret_key=load_or_generate_session_key(), 
     max_age=600
 )
 
 # CORS 허용 (개발용, 필요시 수정)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],  # 실제 프론트엔드 주소에 맞게 수정
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],

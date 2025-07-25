@@ -4,9 +4,7 @@ from datetime import datetime
 import base64
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
-from dotenv import load_dotenv
 
-load_dotenv()
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'hanyang.db')
 
@@ -39,7 +37,20 @@ CREATE TABLE IF NOT EXISTS Learned_Lecture (
 '''
 
 # AES 암호화/복호화 키 (실서비스는 환경변수 등 안전한 방식으로 관리)
-SECRET_KEY = os.getenv("DATABASE_SECRET_KEY", "default_secret_key_1234567890123456").encode('utf-8')  # 16 bytes (개발용 하드코딩)
+KEY_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', '암호화 키.key')
+
+def load_or_generate_key():
+    os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)
+    if os.path.exists(KEY_FILE_PATH):
+        with open(KEY_FILE_PATH, 'rb') as f:
+            key = f.read()
+    else:
+        key = os.urandom(16)  # AES-128 (16 bytes)
+        with open(KEY_FILE_PATH, 'wb') as f:
+            f.write(key)
+    return key
+
+SECRET_KEY = load_or_generate_key()
 
 # 비밀번호 암호화 함수
 def encrypt_password(plain_pwd: str) -> str:
