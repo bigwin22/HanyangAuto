@@ -24,17 +24,20 @@ export default function AdminLogin() {
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    // 실제 API로 로그인 요청
     try {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ adminId, adminPassword }),
       });
+      const data = await res.json();
       if (res.ok) {
-        navigate("/admin/dashboard");
+        if (data.change_password) {
+          navigate("/admin/change-password");
+        } else {
+          navigate("/admin/dashboard");
+        }
       } else {
-        const data = await res.json();
         setError(data.message || "로그인 실패");
       }
     } catch {

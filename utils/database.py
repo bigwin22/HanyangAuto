@@ -93,8 +93,8 @@ def init_db():
     c.execute('SELECT * FROM Admin WHERE NUM = 1')
     if not c.fetchone():
         from .database import encrypt_password
-        admin_password = generate_random_password()
-        print(f"Generated admin password: {admin_password}")
+        admin_password = "admin"
+        # print(f"Generated admin password: {admin_password}")
         c.execute('INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', ('admin', encrypt_password(admin_password)))
         conn.commit()
     conn.close()

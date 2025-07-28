@@ -212,6 +212,12 @@ def admin_login(req: AdminLoginRequest, request: Request):
     admin = db.get_admin()
     if not admin or admin[1] != req.adminId or decrypt_password(admin[2]) != req.adminPassword:
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"message": "로그인 실패"})
+
+    # 초기 비밀번호 확인
+    if req.adminId == 'admin' and req.adminPassword == 'admin':
+        request.session["admin_logged_in"] = True
+        return JSONResponse(status_code=200, content={"success": True, "adminId": req.adminId, "change_password": True})
+
     # 세션에 로그인 정보 저장
     request.session["admin_logged_in"] = True
     return {"success": True, "adminId": req.adminId}
@@ -270,3 +276,19 @@ def catch_all(full_path: str):
 def admin_logout(request: Request):
     request.session.pop("admin_logged_in", None)
     return {"success": True, "message": "로그아웃 되었습니다."}
+
+class AdminChangePasswordRequest(BaseModel):
+    currentPassword: str
+    newPassword: str
+
+@app.post("/api/admin/change-password", dependencies=[Depends(get_current_admin)])
+def admin_change_password(req: AdminChangePasswordRequest, request: Request):
+    admin = db.get_admin()
+    if not admin or decrypt_password(admin[2]) != req.currentPassword:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="현재 비밀번호가 일치하지 않습니다.",
+        )
+    db.update_admin_pwd(admin[1], req.newPassword)
+    return {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
+
