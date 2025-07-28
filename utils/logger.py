@@ -49,12 +49,20 @@ class HanyangLogger:
         self.logger = logging.getLogger(f'{log_type}_{user_id or "system"}')
         self.logger.setLevel(logging.DEBUG)
         if not self.logger.handlers:
-            handler = RotatingFileHandler(
+            self.logger.propagate = False # Prevent logs from being passed to the root logger
+
+            # File handler
+            file_handler = RotatingFileHandler(
                 self.log_path, maxBytes=MAX_LOG_SIZE, backupCount=BACKUP_COUNT, encoding='utf-8'
             )
             formatter = logging.Formatter('[%(asctime)s][%(subject)s][%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+
+            # Console handler
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
 
     def log(self, level, subject, message):
         extra = {'subject': subject}
