@@ -1,14 +1,12 @@
-version: '3.8'
-
 services:
   hanyang-automation:
     build: .
     container_name: hanyang-automation
     restart: always
     
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+    # volumes:
+    #   - ./data:/app/data
+    #   - ./logs:/app/logs
     networks:
       - traefik-net
     labels:

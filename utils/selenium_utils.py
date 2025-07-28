@@ -1,25 +1,32 @@
 from selenium.webdriver.chrome.options import Options
 from selenium import webdriver
-import chromedriver_autoinstaller
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
+import uuid
+from selenium.webdriver.chrome.service import Service
 
 def init_driver() -> webdriver.Chrome:
     """
     웹 드라이버 초기화 함수
     """
-    chromedriver_autoinstaller.install()
-
     chrome_options = Options()
+    chrome_options.binary_location = "/usr/bin/chrome"
+    service = Service(executable_path="/usr/bin/chromedriver")
+
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
-    chrome_options.add_experimental_option("detach", True)
+    chrome_options.add_argument(f"--user-data-dir=/app/data/chrome_user_data/{uuid.uuid4()}")
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--no-default-browser-check")
  
-    return webdriver.Chrome(options=chrome_options)
+    return webdriver.Chrome(service=service, options=chrome_options)
 
 def obj_click(driver: webdriver.Chrome, css_selector: str, wait_time: int = 3, times: int = 2) -> bool:
     """

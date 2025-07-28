@@ -1,0 +1,58 @@
+## Docker 환경 Selenium Chrome 드라이버 문제 해결 보고서
+
+**작성일**: 2025년 7월 28일
+
+### 1. 초기 문제 및 첫 번째 시도: Selenium 경로 하드코딩
+
+*   **문제 발생 시점**: 2025년 7월 28일 (초기 요청)
+*   **문제 내용**: `utils/selenium_utils.py` 파일에서 Selenium Chrome 드라이버 경로가 하드코딩되어 있지 않아 Docker 환경에서 드라이버를 찾지 못할 가능성 제기.
+*   **가설/원인**: `chromedriver_autoinstaller`가 Docker 환경에서 예상대로 작동하지 않거나, Dockerfile에서 설치된 Chrome/ChromeDriver 경로와 `selenium_utils.py`의 드라이버 초기화 방식이 불일치.
+*   **해결 시도**:
+    *   `Dockerfile`에서 Chrome 및 ChromeDriver가 `/usr/bin/chrome` 및 `/usr/bin/chromedriver`에 심볼릭 링크로 설치됨을 확인.
+    *   `utils/selenium_utils.py`에서 `chromedriver_autoinstaller`를 제거하고, `chrome_options.binary_location`과 `Service(executable_path)`를 사용하여 `/usr/bin/chrome` 및 `/usr/bin/chromedriver` 경로를 명시적으로 지정하도록 수정.
+*   **결과**: 경로 문제는 해결되었으나, 이후 `SessionNotCreatedException` 오류 발생.
+
+### 2. 두 번째 시도: `SessionNotCreatedException` (user data directory in use) - `dev/shm` 및 `detach` 옵션
+
+*   **문제 발생 시점**: 2025년 7월 28일 10:33:47 (로그 기록)
+*   **문제 내용**: `SessionNotCreatedException: probably user data directory is already in use, please specify a unique value for --user-data-dir argument, or don't use --user-data-dir` 오류 발생.
+*   **가설/원인**:
+    *   **가설 1**: Docker 컨테이너의 `/dev/shm` (공유 메모리) 크기 제한으로 인해 Chrome이 제대로 시작되지 못함.
+    *   **가설 2**: `selenium_utils.py`의 `--detach` 옵션으로 인해 이전 Chrome 프로세스가 완전히 종료되지 않고 사용자 데이터 디렉토리를 잠그고 있을 가능성.
+*   **해결 시도**:
+    *   `utils/selenium_utils.py`에 `--disable-dev-shm-usage` 인자 추가.
+    *   `--detach` 옵션 제거 및 `--no-first-run`, `--no-default-browser-check` 옵션 추가.
+*   **결과**: 동일한 `SessionNotCreatedException` 오류가 계속 발생.
+
+### 3. 세 번째 시도: `SessionNotCreatedException` (user data directory in use) - 고유한 `user-data-dir` 경로 지정
+
+*   **문제 발생 시점**: 2025년 7월 28일 (이전 시도 후)
+*   **문제 내용**: 동일한 `SessionNotCreatedException` 오류가 계속 발생.
+*   **가설/원인**: `user-data-dir`이 고유하지 않거나, 임시 디렉토리 관리에 문제가 있을 수 있음.
+*   **해결 시도**:
+    *   `utils/selenium_utils.py`에 `uuid` 모듈을 임포트하여 `--user-data-dir`에 `/tmp/chrome_user_data/{uuid}`와 같이 각 세션마다 고유한 임시 디렉토리 경로를 지정하도록 수정.
+*   **결과**: 동일한 `SessionNotCreatedException` 오류가 계속 발생.
+
+### 4. 네 번째 시도: `SessionNotCreatedException` (user data directory in use) - `/tmp` 디렉토리 문제 진단 및 `user-data-dir` 경로 변경
+
+*   **문제 발생 시점**: 2025년 7월 28일 16:01:27 (로그 기록)
+*   **문제 내용**: 동일한 `SessionNotCreatedException` 오류가 계속 발생.
+*   **가설/원인**: `/tmp` 디렉토리 자체의 권한 문제 또는 Docker 환경에서의 `/tmp` 처리 방식 문제. `df -h /tmp` 결과 `/tmp -> private/tmp` 심볼릭 링크가 확인되었으나, `ls -ld /private/tmp` 명령어가 실패하여 `/tmp` 경로의 신뢰성에 의문 제기.
+*   **해결 시도**:
+    *   `utils/selenium_utils.py`에서 `--user-data-dir` 경로를 `/app/data/chrome_user_data/{uuid}`로 변경. (`/app/data`는 컨테이너 내부에서 쓰기 가능한 안전한 경로로 판단)
+*   **결과**: 동일한 `SessionNotCreatedException` 오류가 계속 발생. 이는 `user-data-dir` 경로 자체의 문제라기보다는, Chrome 브라우저가 컨테이너 환경에서 제대로 시작되지 못하고 즉시 종료되면서 발생하는 문제일 가능성이 높다는 결론에 도달.
+
+### 5. 최종 해결: 누락된 시스템 라이브러리 추가
+
+*   **문제 발생 시점**: 2025년 7월 28일 (이전 시도 후)
+*   **문제 내용**: 모든 `user-data-dir` 관련 시도에도 불구하고 `SessionNotCreatedException`이 지속적으로 발생. 이는 Chrome 브라우저가 컨테이너 환경에서 실행되기 위한 필수 시스템 라이브러리가 누락되었을 가능성을 시사.
+*   **가설/원인**: Headless Chrome 실행 시 필요한 `fonts-liberation` 및 `libappindicator3-1`과 같은 특정 폰트 및 그래픽 관련 라이브러리가 Dockerfile에 포함되지 않아 Chrome이 시작되지 못함.
+*   **해결 시도**:
+    *   `Dockerfile`의 `apt-get install` 명령어에 `fonts-liberation` 및 `libappindicator3-1` 패키지 추가.
+*   **결과**: 드라이버 초기화 성공. 문제가 해결된 것으로 보임.
+
+### 결론
+
+`SessionNotCreatedException` 오류는 처음에는 사용자 데이터 디렉토리 문제로 보였으나, **근본적인 원인은 Docker 컨테이너 내부에 Headless Chrome을 실행하는 데 필요한 특정 시스템 라이브러리(`fonts-liberation`, `libappindicator3-1`)가 누락되었기 때문**이었습니다. 이러한 라이브러리들이 없으면 Chrome 브라우저 자체가 제대로 시작되지 못하고 즉시 종료되며, 이로 인해 드라이버가 세션을 생성하지 못하고 `user data directory in use`와 같은 오해의 소지가 있는 오류 메시지를 반환했던 것입니다.
+
+문제 해결 과정에서 `selenium_utils.py`의 드라이버 경로 명시, `dev/shm` 사용 비활성화, `detach` 옵션 제거, 고유한 `user-data-dir` 경로 지정 등 여러 시도를 통해 잠재적인 다른 문제들을 배제하고 최종적으로 누락된 시스템 의존성을 찾아 해결할 수 있었습니다.
