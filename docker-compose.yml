@@ -4,9 +4,9 @@ services:
     container_name: hanyang-automation
     restart: always
     
-    # volumes:
-    #   - ./data:/app/data
-    #   - ./logs:/app/logs
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs  
     networks:
       - traefik-net
     labels:
