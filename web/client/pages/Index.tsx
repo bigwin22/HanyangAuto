@@ -45,7 +45,7 @@ export default function Index() {
             className="w-[80px] h-[80px] mb-4 rounded-[12px]"
           />
           <h1 className="text-[24px] font-bold text-[#003366] text-center max-sm:text-[20px]">
-            한양대학교 포털
+            한양대학교 자동화 시스템
           </h1>
         </div>
 
