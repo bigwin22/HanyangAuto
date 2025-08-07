@@ -1,9 +1,4 @@
-.DS_Store
-*.key
-.vscode/
-*.pyc
-*/__pycache__
-.cursor/
-*.db
-*.log
-.env
+
+# SSH keys
+ssh_private_key.txt
+ssh_public_key.txt
