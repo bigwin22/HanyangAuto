@@ -47,4 +47,6 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ${{ secrets.PROJECT_PATH }}
+            git pull origin main
+            chmod +x ./shFILES/start.sh
             ./shFILES/start.sh
