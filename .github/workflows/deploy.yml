@@ -4,9 +4,7 @@ name: Build and Deploy to Personal Server
 
 # main 브랜치에 push 이벤트가 발생했을 때 실행됩니다.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
