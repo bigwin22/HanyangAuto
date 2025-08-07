@@ -45,26 +45,49 @@ class HanyangLogger:
     def __init__(self, log_type: str = 'system', user_id: Optional[str] = None):
         self.log_type = log_type
         self.user_id = user_id
-        self.log_path = get_log_path(log_type, user_id)
+        self.current_date = None
         self.logger = logging.getLogger(f'{log_type}_{user_id or "system"}')
         self.logger.setLevel(logging.DEBUG)
-        if not self.logger.handlers:
-            self.logger.propagate = False # Prevent logs from being passed to the root logger
+        self.file_handler = None
+        self._setup_logger()
 
+    def _setup_logger(self):
+        """로거 설정을 초기화하거나 업데이트합니다."""
+        # 기존 핸들러 제거
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+        
+        self.logger.propagate = False
+        
+        # 현재 날짜 확인
+        current_date = datetime.now(KST).strftime('%Y%m%d')
+        
+        # 날짜가 바뀌었거나 처음 설정하는 경우
+        if self.current_date != current_date:
+            self.current_date = current_date
+            self.log_path = get_log_path(self.log_type, self.user_id)
+            
             # File handler
-            file_handler = RotatingFileHandler(
+            self.file_handler = RotatingFileHandler(
                 self.log_path, maxBytes=MAX_LOG_SIZE, backupCount=BACKUP_COUNT, encoding='utf-8'
             )
             formatter = logging.Formatter('[%(asctime)s][%(subject)s][%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
-
+            self.file_handler.setFormatter(formatter)
+            self.logger.addHandler(self.file_handler)
+            
             # Console handler
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(formatter)
             self.logger.addHandler(console_handler)
 
+    def _check_date_change(self):
+        """날짜가 바뀌었는지 확인하고 필요시 로거를 재설정합니다."""
+        current_date = datetime.now(KST).strftime('%Y%m%d')
+        if self.current_date != current_date:
+            self._setup_logger()
+
     def log(self, level, subject, message):
+        self._check_date_change()  # 날짜 변경 확인
         extra = {'subject': subject}
         if level not in LOG_LEVELS:
             level = 'INFO'
