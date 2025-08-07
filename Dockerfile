@@ -54,10 +54,17 @@ RUN STABLE=$(wget -q -O - https://googlechromelabs.github.io/chrome-for-testing/
     ln -s /opt/chrome/chrome /usr/bin/chrome && \
     ln -s /opt/chromedriver/chromedriver /usr/bin/chromedriver
 
+# 필요한 파일 및 디렉토리만 명시적으로 복사합니다.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# 애플리케이션 코드 복사
+COPY main.py .
+COPY automation.py .
+COPY utils/ ./utils/
+COPY shFILES/ ./shFILES/
+
+# 빌드된 프론트엔드 파일 복사
 COPY --from=builder /app/web/dist/spa /app/web/dist/spa
 
 EXPOSE 8000
