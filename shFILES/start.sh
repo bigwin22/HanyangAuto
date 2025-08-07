@@ -25,6 +25,6 @@ docker pull "$DOCKER_IMAGE"
 # 4. Docker Compose로 서비스 재시작
 echo "Docker Compose로 서비스를 재시작합니다..."
 docker-compose down
-docker-compose up -d --build
+docker-compose up -d
 
 echo "배포가 성공적으로 완료되었습니다."
