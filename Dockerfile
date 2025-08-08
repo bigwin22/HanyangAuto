@@ -1,4 +1,4 @@
-FROM node:18-slim as builder
+FROM node:18-slim AS builder
 
 WORKDIR /app/web
 
@@ -66,6 +66,12 @@ COPY shFILES/ ./shFILES/
 
 # 빌드된 프론트엔드 파일 복사
 COPY --from=builder /app/web/dist/spa /app/web/dist/spa
+
+# 보안: 비루트 사용자로 실행
+RUN groupadd -r appuser && useradd -r -g appuser appuser \
+    && mkdir -p /app/data /app/logs \
+    && chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8000
 

@@ -22,9 +22,11 @@ export default function Dashboard() {
   // 실제 API에서 유저 데이터 받아오기
   const [users, setUsers] = useState<User[]>([]);
   useEffect(() => {
-    // TODO: 실제 API 엔드포인트로 교체
     fetch("/api/admin/users")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("unauthorized");
+        return res.json();
+      })
       .then((data) => setUsers(data))
       .catch(() => setUsers([]));
   }, []);

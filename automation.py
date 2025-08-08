@@ -197,17 +197,17 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
         return {"learn": False, "msg": f"툴 컨텐츠 프레임 전환 실패: {e}"}
 
     try:
-        #이건 iframe이 아니라 단순 span입니다. frame_to_be_available_and_switch_to_it은 iframe 요소에만 써야 하며 여기선 잘못된 로직입니다. 라는 의견 있음
-        WebDriverWait(driver, 0.5).until(
-            EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-pdf-component > div.xnbc-progress-info-container > span:nth-child(2)"))
-        ) #pdf강의일 경우
+        # PDF 강의: iframe 전환 없이 상태/버튼 요소 존재로 판별
+        WebDriverWait(driver, 1).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "#root > div > div.xnlail-pdf-component"))
+        )
         complete_status = driver.find_elements(By.CSS_SELECTOR, "#root > div > div.xnlail-pdf-component > div.xnbc-progress-info-container > span:nth-child(2)")
-        if complete_status and "완료" == complete_status[0].text:
+        if complete_status and complete_status[0].text.strip() == "완료":
             return {"learn": True, "msg": f"이미 완료된 강의: {lecture_url}"}
         progress_button = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-pdf-component > div.xnvc-progress-info-container > button")
         progress_button.click()
-            
-    except Exception as e: # pdf 강의가 아닐 경우(예: 동영상 강의)
+
+    except Exception: # pdf 강의가 아닐 경우(예: 동영상 강의)
         try:
             WebDriverWait(driver, 0.5).until(
                 EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnlailvc-commons-container > iframe"))
@@ -236,6 +236,10 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
             )#수강 진행도 업데이트를 위해 전환함
         except Exception as e:
             return {"learn": False, "msg": f"수강 진행도 확인을 위한 툴 컨텐츠 프레임 전환 실패: {e}"}
+        # 최대 반복/시간 가드
+        import time
+        start_ts = time.time()
+        max_wait_seconds = 60 * 30  # 30분 상한
         while True:
             try:
                 WebDriverWait(driver, 0.5).until(
@@ -251,6 +255,8 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
                 break
             progress_button = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button")
             progress_button.click()
+            if time.time() - start_ts > max_wait_seconds:
+                return {"learn": False, "msg": "동영상 강의 진행 시간 초과"}
 
     return {"learn": True, "msg": f"강의 학습 완료: {lecture_url}"}
 

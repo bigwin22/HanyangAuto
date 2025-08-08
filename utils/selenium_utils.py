@@ -40,21 +40,23 @@ def obj_click(driver: webdriver.Chrome, css_selector: str, wait_time: int = 3, t
         bool: 클릭 성공 여부
     """
     try:
-        element_present = EC.presence_of_element_located((By.CSS_SELECTOR, css_selector))
+        element_present = EC.element_to_be_clickable((By.CSS_SELECTOR, css_selector))
         WebDriverWait(driver, wait_time).until(element_present)
-        element = driver.find_element(By.CSS_SELECTOR, css_selector)
-        # 스크롤 가능한 만큼 PAGE_DOWN 키로 내림
-
-        while True:
+        try:
+            time.sleep(0.1)
+            driver.find_element(By.CSS_SELECTOR, css_selector).click()
+            return True
+        except Exception:
+            # 1회 즉시 재시도 후 실패 처리
             try:
-                time.sleep(0.1)
+                time.sleep(0.2)
                 driver.find_element(By.CSS_SELECTOR, css_selector).click()
                 return True
-            except Exception as e:
-                return False
-    except Exception as e:
-        if times > 0:
-            obj_click(driver, css_selector, wait_time, times - 1)
-        else:
-            return False
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # 재귀 재시도: 반환 누락 버그 수정(반환 연결)
+    if times > 0:
+        return obj_click(driver, css_selector, wait_time, times - 1)
     return False

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import hanyangLogo from "../public/hanyang_logo.png";
 
 export default function Success() {
   const location = useLocation();
@@ -8,14 +7,12 @@ export default function Success() {
   const [userId, setUserId] = useState("");
 
   useEffect(() => {
-    // 실제로는 location.state가 아니라, 필요시 API에서 사용자 정보 조회
+    // 보안 강화를 위해 백엔드 사용자 조회 API를 제거했으므로,
+    // 성공 페이지에서는 라우터 state만 사용합니다.
     if (location.state?.userId) {
       setUserId(location.state.userId);
     } else {
-      // 예시: /api/user/me 등에서 정보 조회
-      fetch("/api/user/me")
-        .then(res => res.json())
-        .then(data => setUserId(data.userId || ""));
+      setUserId("");
     }
   }, [location.state]);
 
@@ -24,7 +21,7 @@ export default function Success() {
       <div className="bg-white rounded-[20px] shadow-[0_20px_60px_rgba(0,0,0,0.15)] p-8 w-full max-w-[400px] max-sm:p-6">
         <div className="flex flex-col items-center mb-8">
           <img
-            src={hanyangLogo}
+            src="/hanyang_logo.png"
             alt="한양대학교 로고"
             className="w-[80px] h-[80px] mb-4 rounded-[12px]"
           />
@@ -36,9 +33,11 @@ export default function Success() {
           <div className="text-[16px] text-[#374151] font-medium">
             계정이 성공적으로 등록되었습니다.
           </div>
-          <div className="text-[16px] text-[#003366] font-bold">
-            사용자 아이디: <span className="text-[#2563EB]">{userId}</span>
-          </div>
+          {userId && (
+            <div className="text-[16px] text-[#003366] font-bold">
+              사용자 아이디: <span className="text-[#2563EB]">{userId}</span>
+            </div>
+          )}
           <div className="text-[15px] text-[#374151]">
             강의가 자동으로 완료 처리될 예정입니다.<br />
             잠시만 기다려 주세요.

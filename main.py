@@ -84,8 +84,8 @@ def hanyang_logo():
     logo_path = os.path.join(SPA_DIST, "hanyang_logo.png")
     if os.path.exists(logo_path):
         return FileResponse(logo_path)
-    # Fallback to client/public
-    logo_path = os.path.join(os.path.dirname(__file__), 'echo-world', 'client', 'public', 'hanyang_logo.png')
+    # Fallback to vite publicDir (web/client/public)
+    logo_path = os.path.join(os.path.dirname(__file__), 'web', 'client', 'public', 'hanyang_logo.png')
     if os.path.exists(logo_path):
         return FileResponse(logo_path)
     raise HTTPException(status_code=404, detail="hanyang_logo.png not found")
@@ -228,14 +228,10 @@ def check_admin_auth(request: Request):
         raise HTTPException(status_code=401, detail="로그인 필요")
     return {"success": True}
 
-@app.get("/api/user/me")
-def user_me():
-    # 실제 서비스에서는 세션/토큰 등 인증 필요
-    # 예시: 첫 번째 유저 반환
-    user = db.get_all_users()[0] if db.get_all_users() else None
-    if not user:
-        return JSONResponse(status_code=404, content={"message": "사용자 없음"})
-    return {"userId": user[1]}
+# 제거: 인증 없이 사용자 정보를 노출하는 엔드포인트는 보안상 위험하므로 차단합니다.
+# @app.get("/api/user/me")
+# def user_me():
+#     raise HTTPException(status_code=404, detail="Not found")
 
 @app.delete("/api/admin/user/{user_id}", dependencies=[Depends(get_current_admin)])
 def delete_user(user_id: int = Path(...)):
