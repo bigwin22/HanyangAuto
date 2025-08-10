@@ -32,6 +32,10 @@ export default function AdminLogin() {
       });
       const data = await res.json();
       if (res.ok) {
+        // CSRF 토큰을 세션 스토리지에 보관 (동일 탭/세션 한정)
+        if (data.csrf_token) {
+          sessionStorage.setItem("csrf_token", data.csrf_token as string);
+        }
         if (data.change_password) {
           navigate("/admin/change-password");
         } else {

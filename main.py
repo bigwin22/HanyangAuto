@@ -12,17 +12,31 @@ import threading
 import glob
 from utils.logger import HanyangLogger
 from utils.database import decrypt_password
+from utils import config as app_config
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.types import ASGIApp
+from typing import Callable, Dict, List, Tuple
+import time
 
 
 app = FastAPI()
 db.init_db()
+"""보안 설정: 세션/호스트/헤더/레이트리미팅/CSRF"""
 
 # 세션 미들웨어 추가 (10분 유지)
 SESSION_KEY_FILE_PATH = os.path.join(os.path.dirname(__file__), 'data', 'session_key.key')
 
 def load_or_generate_session_key():
     os.makedirs(os.path.dirname(SESSION_KEY_FILE_PATH), exist_ok=True)
+    # 환경변수 우선: SESSION_SECRET_KEY_BASE64 (base64-encoded bytes)
+    env_key_b64 = os.getenv("SESSION_SECRET_KEY_BASE64")
+    if env_key_b64:
+        try:
+            import base64
+            return base64.b64decode(env_key_b64)
+        except Exception:
+            pass
     if os.path.exists(SESSION_KEY_FILE_PATH):
         with open(SESSION_KEY_FILE_PATH, 'rb') as f:
             key = f.read()
@@ -33,19 +47,62 @@ def load_or_generate_session_key():
     return key
 
 app.add_middleware(
-    SessionMiddleware, 
-    secret_key=load_or_generate_session_key(), 
-    max_age=600
+    SessionMiddleware,
+    secret_key=load_or_generate_session_key(),
+    max_age=600,
+    same_site="lax",
+    https_only=True,
+    session_cookie="sessionid",
 )
 
-# CORS 허용 (개발용, 필요시 수정)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],  # 실제 프론트엔드 주소에 맞게 수정
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type"],
-)
+# 신뢰 가능한 호스트 제한
+cfg = app_config.load_config()
+ALLOWED_HOSTS = [h.strip() for h in cfg.get("allowed_hosts", [])]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+
+class SecurityHeadersMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = dict(message.get("headers", []))
+                def _set(name: str, value: str):
+                    headers[name.lower().encode()] = value.encode()
+
+                _set("x-frame-options", "DENY")
+                _set("x-content-type-options", "nosniff")
+                _set("referrer-policy", "no-referrer")
+                _set("permissions-policy", "geolocation=(), microphone=(), camera=()")
+                _set("strict-transport-security", "max-age=31536000; includeSubDomains; preload")
+                # CSP: 빌드된 SPA와 API만 허용 (필요 시 조정)
+                _set(
+                    "content-security-policy",
+                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+                )
+                message["headers"] = list(headers.items())
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CORS: 운영은 동일 오리진 서빙으로 제한. 필요 시 환경변수로 허용.
+allowed_origins = [o.strip() for o in cfg.get("allowed_origins", []) if o.strip()]
+if allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Content-Type", "X-CSRF-Token"],
+    )
 
 # Path to the built React app
 SPA_DIST = os.path.join(os.path.dirname(__file__), 'web', 'dist', 'spa')
@@ -124,6 +181,35 @@ def get_current_admin(request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return True
 
+
+# --- 간단 CSRF 보호 (Double Submit Token 유사) ---
+def generate_csrf_token() -> str:
+    return os.urandom(16).hex()
+
+def get_csrf_from_request(request: Request) -> str:
+    return request.headers.get("x-csrf-token", "")
+
+def require_csrf(request: Request):
+    session_token = request.session.get("csrf_token")
+    header_token = get_csrf_from_request(request)
+    if not session_token or not header_token or session_token != header_token:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token invalid")
+
+
+# --- 간단 레이트리밋 (메모리) ---
+RATE_LIMIT_STORE: Dict[Tuple[str, str], List[float]] = {}
+
+def rate_limit(request: Request, limit: int, window_seconds: int):
+    now = time.time()
+    ip = request.client.host if request.client else "unknown"
+    key = (request.url.path, ip)
+    bucket = RATE_LIMIT_STORE.get(key, [])
+    bucket = [ts for ts in bucket if now - ts < window_seconds]
+    if len(bucket) >= limit:
+        raise HTTPException(status_code=429, detail="Too Many Requests")
+    bucket.append(now)
+    RATE_LIMIT_STORE[key] = bucket
+
 def db_add_learned(user_id, lecture_id):
     user = db.get_user_by_id(user_id)
     if user:
@@ -182,7 +268,9 @@ def get_admin_users():
     return users
 
 @app.post("/api/user/login")
-def user_login(req: UserLoginRequest):
+def user_login(req: UserLoginRequest, request: Request):
+    # 레이트 리미팅: 1분당 10회/IP
+    rate_limit(request, limit=10, window_seconds=60)
     logger = HanyangLogger('system')
     user_logger = HanyangLogger('user', user_id=req.userId)
     user = db.get_user_by_id(req.userId)
@@ -209,6 +297,8 @@ def user_login(req: UserLoginRequest):
 
 @app.post("/api/admin/login")
 def admin_login(req: AdminLoginRequest, request: Request):
+    # 레이트 리미팅: 1분당 5회/IP
+    rate_limit(request, limit=5, window_seconds=60)
     admin = db.get_admin()
     if not admin or admin[1] != req.adminId or decrypt_password(admin[2]) != req.adminPassword:
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"message": "로그인 실패"})
@@ -216,11 +306,16 @@ def admin_login(req: AdminLoginRequest, request: Request):
     # 초기 비밀번호 확인
     if req.adminId == 'admin' and req.adminPassword == 'admin':
         request.session["admin_logged_in"] = True
-        return JSONResponse(status_code=200, content={"success": True, "adminId": req.adminId, "change_password": True})
+        # CSRF 토큰 발급
+        csrf_token = generate_csrf_token()
+        request.session["csrf_token"] = csrf_token
+        return JSONResponse(status_code=200, content={"success": True, "adminId": req.adminId, "change_password": True, "csrf_token": csrf_token})
 
     # 세션에 로그인 정보 저장
     request.session["admin_logged_in"] = True
-    return {"success": True, "adminId": req.adminId}
+    csrf_token = generate_csrf_token()
+    request.session["csrf_token"] = csrf_token
+    return {"success": True, "adminId": req.adminId, "csrf_token": csrf_token}
 
 @app.get("/api/admin/check-auth")
 def check_admin_auth(request: Request):
@@ -234,7 +329,8 @@ def check_admin_auth(request: Request):
 #     raise HTTPException(status_code=404, detail="Not found")
 
 @app.delete("/api/admin/user/{user_id}", dependencies=[Depends(get_current_admin)])
-def delete_user(user_id: int = Path(...)):
+def delete_user(request: Request, user_id: int = Path(...)):
+    require_csrf(request)
     logger = HanyangLogger('system')
     db.delete_learned_lectures(user_id)
     db.delete_user_by_num(user_id)
@@ -271,6 +367,7 @@ def catch_all(full_path: str):
 @app.post("/api/admin/logout")
 def admin_logout(request: Request):
     request.session.pop("admin_logged_in", None)
+    request.session.pop("csrf_token", None)
     return {"success": True, "message": "로그아웃 되었습니다."}
 
 class AdminChangePasswordRequest(BaseModel):
@@ -279,11 +376,18 @@ class AdminChangePasswordRequest(BaseModel):
 
 @app.post("/api/admin/change-password", dependencies=[Depends(get_current_admin)])
 def admin_change_password(req: AdminChangePasswordRequest, request: Request):
+    require_csrf(request)
     admin = db.get_admin()
     if not admin or decrypt_password(admin[2]) != req.currentPassword:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="현재 비밀번호가 일치하지 않습니다.",
+        )
+    # 간단한 비밀번호 정책: 길이 8+, 영문/숫자 조합 권장
+    if len(req.newPassword) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="새 비밀번호는 8자 이상이어야 합니다.",
         )
     db.update_admin_pwd(admin[1], req.newPassword)
     return {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}

@@ -16,6 +16,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
+    gosu \
     # --- 크롬 의존성 라이브러리 추가 ---
     libglib2.0-0 \
     libnss3 \
@@ -63,16 +64,16 @@ COPY main.py .
 COPY automation.py .
 COPY utils/ ./utils/
 COPY shFILES/ ./shFILES/
+RUN chmod +x /app/shFILES/entrypoint.sh
 
 # 빌드된 프론트엔드 파일 복사
 COPY --from=builder /app/web/dist/spa /app/web/dist/spa
 
-# 보안: 비루트 사용자로 실행
+# 보안: 비루트 사용자 생성
 RUN groupadd -r appuser && useradd -r -g appuser appuser \
     && mkdir -p /app/data /app/logs \
     && chown -R appuser:appuser /app
-USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/shFILES/entrypoint.sh"]

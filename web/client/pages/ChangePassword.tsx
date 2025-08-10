@@ -42,7 +42,10 @@ export default function ChangePassword() {
     try {
       const res = await fetch("/api/admin/change-password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": sessionStorage.getItem("csrf_token") || "",
+        },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
 

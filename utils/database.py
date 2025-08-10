@@ -36,11 +36,23 @@ CREATE TABLE IF NOT EXISTS Learned_Lecture (
 );
 '''
 
-# AES 암호화/복호화 키 (실서비스는 환경변수 등 안전한 방식으로 관리)
+# AES 암호화/복호화 키
 KEY_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', '암호화 키.key')
 
 def load_or_generate_key():
     os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)
+    # 환경변수 지원 + 파일 영속화: 재부팅/재배포에도 유지
+    env_key_b64 = os.getenv('DB_SECRET_KEY_BASE64')
+    if env_key_b64:
+        try:
+            import base64
+            key = base64.b64decode(env_key_b64)
+            # 파일에도 저장하여 이후 환경변수 미설정 시에도 지속 사용
+            with open(KEY_FILE_PATH, 'wb') as f:
+                f.write(key)
+            return key
+        except Exception:
+            pass
     if os.path.exists(KEY_FILE_PATH):
         with open(KEY_FILE_PATH, 'rb') as f:
             key = f.read()

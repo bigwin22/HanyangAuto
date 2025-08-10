@@ -22,7 +22,9 @@ export default function Dashboard() {
   // 실제 API에서 유저 데이터 받아오기
   const [users, setUsers] = useState<User[]>([]);
   useEffect(() => {
-    fetch("/api/admin/users")
+    fetch("/api/admin/users", {
+      headers: { "X-CSRF-Token": sessionStorage.getItem("csrf_token") || "" },
+    })
       .then((res) => {
         if (!res.ok) throw new Error("unauthorized");
         return res.json();
@@ -89,7 +91,9 @@ export default function Dashboard() {
     setShowUserCourses(false);
     setUserLog("로그 불러오는 중...");
     try {
-      const res = await fetch(`/api/admin/user/${user.userId}/logs`);
+      const res = await fetch(`/api/admin/user/${user.userId}/logs`, {
+        headers: { "X-CSRF-Token": sessionStorage.getItem("csrf_token") || "" },
+      });
       if (res.ok) {
         const text = await res.text();
         setUserLog(text);
@@ -102,7 +106,10 @@ export default function Dashboard() {
   };
 
   const deleteUser = async (userId: number) => {
-    const res = await fetch(`/api/admin/user/${userId}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/user/${userId}`, {
+      method: "DELETE",
+      headers: { "X-CSRF-Token": sessionStorage.getItem("csrf_token") || "" },
+    });
     if (res.ok) {
     setUsers(users.filter((user) => user.id !== userId));
     if (selectedUser && selectedUser.id === userId) {
