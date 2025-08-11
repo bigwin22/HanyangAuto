@@ -3,6 +3,8 @@ services:
     image: ${DOCKER_IMAGE} # 사용할 이미지를 명시적으로 지정
     container_name: ${CONTAINER_NAME}
     restart: always
+    environment:
+      - PORT=${PORT}
     
     volumes:
       - ./data:/app/data
@@ -11,10 +13,11 @@ services:
       - traefik-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.hanyang-automation.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.hanyang-automation.entrypoints=web,websecure"
-      - "traefik.http.routers.hanyang-automation.tls.certresolver=letsencrypt"
-      - "traefik.http.services.hanyang-automation.loadbalancer.server.port=${PORT}"
+      - "traefik.http.routers.${CONTAINER_NAME}.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.${CONTAINER_NAME}.entrypoints=web,websecure"
+      - "traefik.http.routers.${CONTAINER_NAME}.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${CONTAINER_NAME}.service=${CONTAINER_NAME}"
+      - "traefik.http.services.${CONTAINER_NAME}.loadbalancer.server.port=${PORT}"
 
 networks:
   traefik-net:

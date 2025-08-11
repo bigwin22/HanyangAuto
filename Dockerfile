@@ -67,6 +67,8 @@ COPY shFILES/ ./shFILES/
 # 빌드된 프론트엔드 파일 복사
 COPY --from=builder /app/web/dist/spa /app/web/dist/spa
 
-EXPOSE 8000
+# Informational expose; actual runtime port is controlled by $PORT
+EXPOSE 8000 8001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use $PORT if provided (e.g., 8001 for dev), default to 8000
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -4,19 +4,12 @@
 # 에러 발생 시 즉시 중단
 set -e
 
-# Docker 이미지 및 환경 변수 설정
-export PROJECT_DIR="$PROJECT_PATH"
-export DOCKER_IMAGE=${DOCKER_IMAGE}
-export DOMAIN=${DOMAIN}
-export CONTAINER_NAME=${CONTAINER_NAME}
-export PORT=${PORT}
-export IMAGE_TYPE=${IMAGE_TYPE}
-
-
-# --- 사용자 설정 필요한 부분 ---
-PROJECT_DIR=${PROJECT_DIR} # 깃허브 액션에서 환경변수로 입력할 것이다.
-DOCKER_IMAGE=${DOCKER_IMAGE} # 2. 실제 Docker Hub 이미지 주소로 수정하세요. 깃허브 액션에서 환경변수로 입력할 것이다.
-# --------------------------
+# 필수 환경 변수 확인 (GitHub Actions 또는 실행 환경에서 주입되어야 함)
+if [ -z "${PROJECT_DIR:-}" ]; then echo "PROJECT_DIR 환경 변수가 필요합니다"; exit 1; fi
+if [ -z "${DOCKER_IMAGE:-}" ]; then echo "DOCKER_IMAGE 환경 변수가 필요합니다"; exit 1; fi
+if [ -z "${DOMAIN:-}" ]; then echo "DOMAIN 환경 변수가 필요합니다"; exit 1; fi
+if [ -z "${CONTAINER_NAME:-}" ]; then echo "CONTAINER_NAME 환경 변수가 필요합니다"; exit 1; fi
+if [ -z "${PORT:-}" ]; then echo "PORT 환경 변수가 필요합니다"; exit 1; fi
 
 echo "배포를 시작합니다..."
 
