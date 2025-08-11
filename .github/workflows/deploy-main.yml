@@ -4,7 +4,7 @@ name: Build and Deploy to Development Server
 on:
   push:
     branches:
-      - dev
+      - main
 
 jobs:
   build-and-deploy:
@@ -24,7 +24,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:dev
+          tags: ${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:latest
 
       - name: Deploy to Development Server
         uses: appleboy/ssh-action@master
@@ -33,17 +33,17 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/kth88/services/development/
+            cd /home/kth88/services/product/
             gh repo clone kth88/HanyangAuto
             cd HanyangAuto
             docker-compose down --rmi all -v
-            git fetch origin dev
-            git reset --hard origin/dev
-            git pull origin dev
+            git fetch origin main
+            git reset --hard origin/main
+            git pull origin main
 
-            export PROJECT_DIR=/home/kth88/services/development/HanyangAuto
-            export DOCKER_IMAGE=kth88/hanyang-automation:dev
-            export DOMAIN=dev-hanyang.newme.dev
+            export PROJECT_DIR=/home/kth88/services/product/
+            export DOCKER_IMAGE=kth88/hanyang-automation:latest
+            export DOMAIN=hanyang.newme.dev
 
             chmod +x ./shFILES/start.sh
             ./shFILES/start.sh

@@ -11,10 +11,10 @@ services:
       - traefik-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.hanyang-learning.rule=Host(`hanyang.newme.dev`)"
-      - "traefik.http.routers.hanyang-learning.entrypoints=web,websecure"
-      - "traefik.http.routers.hanyang-learning.tls.certresolver=letsencrypt"
-      - "traefik.http.services.hanyang-learning.loadbalancer.server.port=8000"
+      - "traefik.http.routers.hanyang-automation.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.hanyang-automation.entrypoints=web,websecure"
+      - "traefik.http.routers.hanyang-automation.tls.certresolver=letsencrypt"
+      - "traefik.http.services.hanyang-automation.loadbalancer.server.port=8000"
 
 networks:
   traefik-net:
