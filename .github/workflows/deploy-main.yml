@@ -1,6 +1,5 @@
 # .github/workflows/deploy-dev.yml
 name: Build and Deploy to Product Server
-
 on:
   push:
     branches:
@@ -33,17 +32,26 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /home/kth88/services/product/
-            gh repo clone HanyangAuto
-            cd HanyangAuto
-            docker-compose down --rmi all -v
-            git fetch origin main
-            git reset --hard origin/main
-            git pull origin main
+            PROJECT_PATH="/home/kth88/services/product/HanyangAuto"
+            DEPLOY_DIR="/home/kth88/services/product/"
 
-            export PROJECT_DIR=/home/kth88/services/product/HanyangAuto
+            # 프로젝트 디렉토리가 존재하는지 확인
+            if [ -d "$PROJECT_PATH" ]; then
+              echo "프로젝트 디렉토리가 존재합니다. git pull을 시도합니다."
+              cd "$PROJECT_PATH"
+              git pull origin main
+            else
+              echo "프로젝트 디렉토리가 존재하지 않습니다. gh repo clone을 시도합니다."
+              cd "$DEPLOY_DIR"
+              gh repo clone HanyangAuto
+              cd "$PROJECT_PATH"
+            fi
+
+            # Docker 이미지 및 환경 변수 설정
+            export PROJECT_DIR="$PROJECT_PATH"
             export DOCKER_IMAGE=kth88/hanyang-automation:latest
             export DOMAIN=hanyang.newme.dev
 
+            # Docker Compose로 배포 재시작
             chmod +x ./shFILES/start.sh
             ./shFILES/start.sh
