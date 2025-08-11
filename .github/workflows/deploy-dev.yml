@@ -56,6 +56,7 @@ jobs:
             export DOMAIN=dev-hanyang.newme.dev
             export CONTAINER_NAME=hanyangauto-dev
             export PORT=8001
+            export IMAGE_TYPE=dev
 
 
             # Docker Compose로 배포 재시작
