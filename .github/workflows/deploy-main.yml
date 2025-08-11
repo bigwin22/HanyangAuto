@@ -41,7 +41,7 @@ jobs:
             git reset --hard origin/main
             git pull origin main
 
-            export PROJECT_DIR=/home/kth88/services/product/
+            export PROJECT_DIR=/home/kth88/services/product/HanyangAuto
             export DOCKER_IMAGE=kth88/hanyang-automation:latest
             export DOMAIN=hanyang.newme.dev
 
