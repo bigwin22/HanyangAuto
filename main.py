@@ -15,6 +15,8 @@ from utils.logger import HanyangLogger
 from utils.database import decrypt_password
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+import fcntl
+from typing import Dict
 
 
 app = FastAPI()
@@ -157,8 +159,45 @@ def db_add_learned(user_id, lecture_id):
         db.add_learned_lecture(user[0], lecture_id)
 
 # 유저 자동화 실행 (비동기)
-# 전역 동시성 제한: 환경변수 AUTMATION_MAX_WORKERS (기본 5)
+# 전역 동시성 제한: 환경변수 AUTOMATION_MAX_WORKERS (기본 5)
 automation_executor = ThreadPoolExecutor(max_workers=int(os.getenv("AUTOMATION_MAX_WORKERS", "5")))
+
+# 프로세스 간 유저별 중복 실행 방지용 파일 락
+user_lock_fds: Dict[str, int] = {}
+
+def _try_acquire_user_file_lock(user_id: str) -> bool:
+    lock_path = f"/tmp/hanyangauto_user_{user_id}.lock"
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        user_lock_fds[user_id] = fd
+        return True
+    except Exception:
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+        return False
+
+def _release_user_file_lock(user_id: str):
+    fd = user_lock_fds.pop(user_id, None)
+    if fd is not None:
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+
+def schedule_user_automation(user_id: str, pwd: str):
+    logger = HanyangLogger('system')
+    if not _try_acquire_user_file_lock(user_id):
+        logger.info('automation', f'중복 실행 방지로 {user_id} 작업 건너뜀')
+        return
+    def _task():
+        try:
+            run_automation_for_user(user_id, pwd)
+        finally:
+            _release_user_file_lock(user_id)
+    automation_executor.submit(_task)
 def run_automation_for_user(user_id, pwd):
     system_logger = HanyangLogger('system')
     user_logger = HanyangLogger('user', user_id=str(user_id))
@@ -184,15 +223,30 @@ def run_automation_for_all_users():
     users = db.get_all_users()
     for user in users:
         # user[1] = ID, user[2] = PWD_Encrypted
-        automation_executor.submit(run_automation_for_user, user[1], user[2])
+        schedule_user_automation(user[1], user[2])
 
 # APScheduler로 매일 7시, 서버 시작 시 자동화
-scheduler = BackgroundScheduler(timezone='Asia/Seoul')
-scheduler.add_job(run_automation_for_all_users, 'cron', hour=7, minute=0)
-scheduler.start()
+def _is_primary_process() -> bool:
+    try:
+        lock_path = '/tmp/hanyangauto_scheduler.lock'
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        globals()['__primary_lock_fd'] = fd  # keep FD open
+        return True
+    except Exception:
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+        return False
 
-# 서버 시작 시 자동화
-threading.Thread(target=run_automation_for_all_users, daemon=True).start()
+SCHEDULER_ENABLED = os.getenv('SCHEDULER_ENABLED', 'true').lower() == 'true'
+if SCHEDULER_ENABLED and _is_primary_process():
+    scheduler = BackgroundScheduler(timezone='Asia/Seoul')
+    scheduler.add_job(run_automation_for_all_users, 'cron', hour=7, minute=0)
+    scheduler.start()
+    # 서버 시작 시 자동화 (초기 한 번)
+    threading.Thread(target=run_automation_for_all_users, daemon=True).start()
 
 # 서버 시작 시 로그 기록 (폴더 자동 생성)
 HanyangLogger('system').info('system', '서버가 시작되었습니다.')
@@ -224,7 +278,7 @@ def user_login(req: UserLoginRequest):
         user_logger.info('user', '유저 로그인')
         logger.info('automation', f'자동화 준비 시작: {req.userId}')
         user_logger.info('automation', '자동화 준비 시작')
-        automation_executor.submit(run_automation_for_user, req.userId, req.password)
+        schedule_user_automation(req.userId, req.password)
     else:
         db.update_user_pwd(req.userId, req.password)
         logger.info('user', f'기존 유저 비밀번호 업데이트: {req.userId}')
@@ -233,7 +287,7 @@ def user_login(req: UserLoginRequest):
         user_logger.info('user', '유저 로그인')
         logger.info('automation', f'자동화 준비 시작: {req.userId}')
         user_logger.info('automation', '자동화 준비 시작')
-        automation_executor.submit(run_automation_for_user, req.userId, req.password)
+        schedule_user_automation(req.userId, req.password)
     return {"success": True, "userId": req.userId}
 
 @app.post("/api/admin/login")
