@@ -37,30 +37,58 @@ CREATE TABLE IF NOT EXISTS Learned_Lecture (
 '''
 
 # AES 암호화/복호화 키
-KEY_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', '암호화 키.key')
+# Docker Secret 경로 (/run/secrets/hanyang_master_key) 또는 환경변수(DB_SECRET_KEY_BASE64)만 허용
+DOCKER_SECRET_PATH_DEFAULT = "/run/secrets/hanyang_master_key"
+
+def _try_decode_base64_maybe(data: bytes) -> bytes:
+    try:
+        # validate=True로 엄격한 Base64 판별
+        decoded = base64.b64decode(data.strip(), validate=True)
+        # 성공했고 디코딩 결과가 비어있지 않으면 사용
+        if decoded:
+            return decoded
+    except Exception:
+        pass
+    return data
+
 
 def load_or_generate_key():
-    os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)
-    # 환경변수 지원 + 파일 영속화: 재부팅/재배포에도 유지
+    """
+    마스터 키 로드 우선순위
+    1) Docker Secret 파일 (/run/secrets/hanyang_master_key 또는 환경변수 HANYANG_MASTER_KEY_FILE)
+    2) 환경변수(DB_SECRET_KEY_BASE64)
+
+    주의: 신규 키 자동 생성은 하지 않습니다. (재부팅 후 불변 요구 충족 및 운영자 접근 억제)
+    """
+    # 1) Docker Secret 파일
+    secret_path = os.getenv("HANYANG_MASTER_KEY_FILE", DOCKER_SECRET_PATH_DEFAULT)
+    try:
+        if os.path.exists(secret_path):
+            with open(secret_path, 'rb') as f:
+                raw = f.read()
+            key = _try_decode_base64_maybe(raw)
+            if len(key) in (16, 24, 32):
+                return key
+            # 길이가 맞지 않아도 AES는 16/24/32만 허용하므로 명시 오류
+            raise RuntimeError("Invalid Docker secret key length. Expect 16/24/32 bytes or base64 of that.")
+    except Exception:
+        # 비정상 파일 접근/권한 문제 등은 다음 경로로 폴백
+        pass
+
+    # 2) 환경변수 (base64)
     env_key_b64 = os.getenv('DB_SECRET_KEY_BASE64')
     if env_key_b64:
         try:
-            import base64
             key = base64.b64decode(env_key_b64)
-            # 파일에도 저장하여 이후 환경변수 미설정 시에도 지속 사용
-            with open(KEY_FILE_PATH, 'wb') as f:
-                f.write(key)
-            return key
+            if len(key) in (16, 24, 32):
+                return key
         except Exception:
             pass
-    if os.path.exists(KEY_FILE_PATH):
-        with open(KEY_FILE_PATH, 'rb') as f:
-            key = f.read()
-    else:
-        key = os.urandom(16)  # AES-128 (16 bytes)
-        with open(KEY_FILE_PATH, 'wb') as f:
-            f.write(key)
-    return key
+
+    # 신규 키 자동 생성은 금지: 운영 정책상 명시적 Secret 제공 필요
+    raise RuntimeError(
+        "Master key not found. Provide Docker secret at /run/secrets/hanyang_master_key or set DB_SECRET_KEY_BASE64."
+    )
 
 SECRET_KEY = load_or_generate_key()
 

@@ -1,6 +1,7 @@
 services:
   hanyang-automation:
     image: kth88/hanyang-automation:latest # 사용할 이미지를 명시적으로 지정
+    build: .
     container_name: hanyang-automation
     restart: always
     
@@ -15,6 +16,12 @@ services:
       - "traefik.http.routers.hanyang-learning.entrypoints=web,websecure"
       - "traefik.http.routers.hanyang-learning.tls.certresolver=letsencrypt"
       - "traefik.http.services.hanyang-learning.loadbalancer.server.port=8000"
+    secrets:
+      - hanyang_master_key
+
+secrets:
+  hanyang_master_key:
+    file: ./data/hanyang_master_key
 
 networks:
   traefik-net:
