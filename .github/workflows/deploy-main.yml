@@ -34,7 +34,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /home/kth88/services/product/
-            gh repo clone kth88/HanyangAuto
+            gh repo clone HanyangAuto
             cd HanyangAuto
             docker-compose down --rmi all -v
             git fetch origin main
