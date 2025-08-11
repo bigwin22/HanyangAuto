@@ -52,6 +52,7 @@ jobs:
             export DOCKER_IMAGE=kth88/hanyang-automation:latest
             export DOMAIN=hanyang.newme.dev
             export CONTAINER_NAME=hanyangauto-main
+            export PORT=8000
 
             # Docker Compose로 배포 재시작
             chmod +x ./shFILES/start.sh
