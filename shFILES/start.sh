@@ -26,7 +26,18 @@ docker pull "$DOCKER_IMAGE"
 
 # 4. Docker Compose로 서비스 재시작
 echo "Docker Compose로 서비스를 재시작합니다... (project: ${COMPOSE_PROJECT_NAME})"
-docker-compose -p "${COMPOSE_PROJECT_NAME}" down --remove-orphans -v
+
+# (안전장치) 동일 이름의 컨테이너가 남아있으면 강제 제거
+EXISTING=$(docker ps -aq -f name="^/${CONTAINER_NAME}$" || true)
+if [ -n "$EXISTING" ]; then
+  echo "기존 컨테이너(${CONTAINER_NAME})를 제거합니다: $EXISTING"
+  docker rm -f "$CONTAINER_NAME" || true
+fi
+
+# 외부 네트워크가 없다면 생성 (traefik-net)
+docker network inspect traefik-net >/dev/null 2>&1 || docker network create traefik-net || true
+
+docker-compose -p "${COMPOSE_PROJECT_NAME}" down --remove-orphans -v || true
 docker-compose -p "${COMPOSE_PROJECT_NAME}" up -d --pull always --no-build
 
 echo "배포가 성공적으로 완료되었습니다."
