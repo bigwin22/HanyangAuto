@@ -1,7 +1,7 @@
 services:
   hanyang-automation:
     image: kth88/hanyang-automation:latest # 사용할 이미지를 명시적으로 지정
-    container_name: hanyang-automation
+    container_name: ${CONTAINER_NAME}
     restart: always
     
     volumes:

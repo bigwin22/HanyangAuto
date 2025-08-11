@@ -54,6 +54,8 @@ jobs:
             export PROJECT_DIR="$PROJECT_PATH"
             export DOCKER_IMAGE=kth88/hanyang-automation:dev
             export DOMAIN=dev-hanyang.newme.dev
+            export CONTAINER_NAME=hanyangauto-dev
+
 
             # Docker Compose로 배포 재시작
             chmod +x ./shFILES/start.sh
