@@ -11,6 +11,10 @@ if [ -z "${DOMAIN:-}" ]; then echo "DOMAIN 환경 변수가 필요합니다"; ex
 if [ -z "${CONTAINER_NAME:-}" ]; then echo "CONTAINER_NAME 환경 변수가 필요합니다"; exit 1; fi
 if [ -z "${PORT:-}" ]; then echo "PORT 환경 변수가 필요합니다"; exit 1; fi
 
+# Docker Compose 프로젝트 이름을 환경별로 고유하게 설정
+export COMPOSE_PROJECT_NAME="${CONTAINER_NAME}"
+echo "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}"
+
 echo "배포를 시작합니다..."
 
 # 1. 프로젝트 디렉토리로 이동
@@ -21,8 +25,8 @@ echo "Docker Hub에서 최신 이미지를 가져옵니다: $DOCKER_IMAGE"
 docker pull "$DOCKER_IMAGE"
 
 # 4. Docker Compose로 서비스 재시작
-echo "Docker Compose로 서비스를 재시작합니다..."
-docker-compose down --remove-orphans -v
-docker-compose up -d --pull always --no-build
+echo "Docker Compose로 서비스를 재시작합니다... (project: ${COMPOSE_PROJECT_NAME})"
+docker-compose -p "${COMPOSE_PROJECT_NAME}" down --remove-orphans -v
+docker-compose -p "${COMPOSE_PROJECT_NAME}" up -d --pull always --no-build
 
 echo "배포가 성공적으로 완료되었습니다."
