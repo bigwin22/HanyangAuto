@@ -1,5 +1,5 @@
 # .github/workflows/deploy-dev.yml
-name: Build and Deploy to Development Server
+name: Build and Deploy to Product Server
 
 on:
   push:
