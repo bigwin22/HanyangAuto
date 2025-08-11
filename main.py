@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import base64
 import os
 import utils.database as db
 from automation import run_user_automation
@@ -13,15 +14,22 @@ import glob
 from utils.logger import HanyangLogger
 from utils.database import decrypt_password
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 app = FastAPI()
 db.init_db()
 
-# 세션 미들웨어 추가 (10분 유지)
+# 세션 미들웨어 추가 (유지시간 5분). 환경변수 우선 사용
 SESSION_KEY_FILE_PATH = os.path.join(os.path.dirname(__file__), 'data', 'session_key.key')
 
 def load_or_generate_session_key():
+    env_session_b64 = os.getenv("SESSION_SECRET_B64")
+    if env_session_b64:
+        try:
+            return base64.b64decode(env_session_b64)
+        except Exception as e:
+            raise ValueError(f"Invalid SESSION_SECRET_B64: {e}")
     os.makedirs(os.path.dirname(SESSION_KEY_FILE_PATH), exist_ok=True)
     if os.path.exists(SESSION_KEY_FILE_PATH):
         with open(SESSION_KEY_FILE_PATH, 'rb') as f:
@@ -33,15 +41,34 @@ def load_or_generate_session_key():
     return key
 
 app.add_middleware(
-    SessionMiddleware, 
-    secret_key=load_or_generate_session_key(), 
-    max_age=600
+    SessionMiddleware,
+    secret_key=load_or_generate_session_key(),
+    max_age=300,
 )
 
-# CORS 허용 (개발용, 필요시 수정)
+# 보안 헤더 미들웨어
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CORS 허용: 환경변수 CORS_ALLOW_ORIGINS(콤마 구분) 우선
+cors_origins = os.getenv("CORS_ALLOW_ORIGINS")
+if cors_origins:
+    allow_origins = [o.strip() for o in cors_origins.split(',') if o.strip()]
+else:
+    allow_origins = ["http://localhost:8080", "http://127.0.0.1:8080"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],  # 실제 프론트엔드 주소에 맞게 수정
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
@@ -130,6 +157,8 @@ def db_add_learned(user_id, lecture_id):
         db.add_learned_lecture(user[0], lecture_id)
 
 # 유저 자동화 실행 (비동기)
+# 전역 동시성 제한: 환경변수 AUTMATION_MAX_WORKERS (기본 5)
+automation_executor = ThreadPoolExecutor(max_workers=int(os.getenv("AUTOMATION_MAX_WORKERS", "5")))
 def run_automation_for_user(user_id, pwd):
     system_logger = HanyangLogger('system')
     user_logger = HanyangLogger('user', user_id=str(user_id))
@@ -153,9 +182,9 @@ def run_automation_for_user(user_id, pwd):
 # 전체 유저 자동화 (병렬)
 def run_automation_for_all_users():
     users = db.get_all_users()
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        for user in users:
-            executor.submit(run_automation_for_user, user[1], user[2])
+    for user in users:
+        # user[1] = ID, user[2] = PWD_Encrypted
+        automation_executor.submit(run_automation_for_user, user[1], user[2])
 
 # APScheduler로 매일 7시, 서버 시작 시 자동화
 scheduler = BackgroundScheduler(timezone='Asia/Seoul')
@@ -195,7 +224,7 @@ def user_login(req: UserLoginRequest):
         user_logger.info('user', '유저 로그인')
         logger.info('automation', f'자동화 준비 시작: {req.userId}')
         user_logger.info('automation', '자동화 준비 시작')
-        threading.Thread(target=run_automation_for_user, args=(req.userId, req.password), daemon=True).start()
+        automation_executor.submit(run_automation_for_user, req.userId, req.password)
     else:
         db.update_user_pwd(req.userId, req.password)
         logger.info('user', f'기존 유저 비밀번호 업데이트: {req.userId}')
@@ -204,7 +233,7 @@ def user_login(req: UserLoginRequest):
         user_logger.info('user', '유저 로그인')
         logger.info('automation', f'자동화 준비 시작: {req.userId}')
         user_logger.info('automation', '자동화 준비 시작')
-        threading.Thread(target=run_automation_for_user, args=(req.userId, req.password), daemon=True).start()
+        automation_executor.submit(run_automation_for_user, req.userId, req.password)
     return {"success": True, "userId": req.userId}
 
 @app.post("/api/admin/login")

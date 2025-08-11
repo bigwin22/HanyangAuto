@@ -71,4 +71,4 @@ COPY --from=builder /app/web/dist/spa /app/web/dist/spa
 EXPOSE 8000 8001
 
 # Use $PORT if provided (e.g., 8001 for dev), default to 8000
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WORKERS:-2}"]

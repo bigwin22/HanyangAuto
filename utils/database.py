@@ -36,16 +36,30 @@ CREATE TABLE IF NOT EXISTS Learned_Lecture (
 );
 '''
 
-# AES 암호화/복호화 키 (실서비스는 환경변수 등 안전한 방식으로 관리)
+# AES 암호화/복호화 키 로딩: 우선순위 1) 환경변수(DB_ENCRYPTION_KEY_B64), 2) 파일 보관
 KEY_FILE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', '암호화 키.key')
 
 def load_or_generate_key():
+    # 환경변수 우선
+    env_key_b64 = os.getenv("DB_ENCRYPTION_KEY_B64")
+    if env_key_b64:
+        try:
+            key = base64.b64decode(env_key_b64)
+            # AES는 16/24/32바이트 키를 지원. 32바이트(AES-256) 권장
+            if len(key) not in (16, 24, 32):
+                raise ValueError("DB_ENCRYPTION_KEY_B64 must decode to 16/24/32 bytes")
+            return key
+        except Exception as e:
+            raise ValueError(f"Invalid DB_ENCRYPTION_KEY_B64: {e}")
+
+    # 파일 보관 키 사용(없으면 생성)
     os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)
     if os.path.exists(KEY_FILE_PATH):
         with open(KEY_FILE_PATH, 'rb') as f:
             key = f.read()
     else:
-        key = os.urandom(16)  # AES-128 (16 bytes)
+        # 기본은 32바이트 키(AES-256)
+        key = os.urandom(32)
         with open(KEY_FILE_PATH, 'wb') as f:
             f.write(key)
     return key
@@ -54,24 +68,56 @@ SECRET_KEY = load_or_generate_key()
 
 # 비밀번호 암호화 함수
 def encrypt_password(plain_pwd: str) -> str:
-    cipher = AES.new(SECRET_KEY, AES.MODE_CBC)
-    ct_bytes = cipher.encrypt(pad(plain_pwd.encode('utf-8'), AES.block_size))
-    iv = base64.b64encode(cipher.iv).decode('utf-8')
-    ct = base64.b64encode(ct_bytes).decode('utf-8')
-    return f'{iv}:{ct}'
+    """
+    비밀번호 암호화
+    - v2 포맷: AES-GCM 사용, 형식은 'v2:nonce:ciphertext:tag' (모두 base64)
+    - 하위호환: 기존 CBC 포맷('iv:ct')은 복호화 시에만 지원
+    """
+    cipher = AES.new(SECRET_KEY, AES.MODE_GCM)
+    ct_bytes, tag = cipher.encrypt_and_digest(plain_pwd.encode('utf-8'))
+    nonce_b64 = base64.b64encode(cipher.nonce).decode('utf-8')
+    ct_b64 = base64.b64encode(ct_bytes).decode('utf-8')
+    tag_b64 = base64.b64encode(tag).decode('utf-8')
+    return f"v2:{nonce_b64}:{ct_b64}:{tag_b64}"
 
 # 비밀번호 복호화 함수
 def decrypt_password(enc_pwd: str) -> str:
-    iv, ct = enc_pwd.split(':')
-    iv = base64.b64decode(iv)
-    ct = base64.b64decode(ct)
-    cipher = AES.new(SECRET_KEY, AES.MODE_CBC, iv)
-    pt = unpad(cipher.decrypt(ct), AES.block_size)
-    return pt.decode('utf-8')
+    # v2 (AES-GCM)
+    if enc_pwd.startswith('v2:'):
+        try:
+            _, nonce_b64, ct_b64, tag_b64 = enc_pwd.split(':')
+            nonce = base64.b64decode(nonce_b64)
+            ct = base64.b64decode(ct_b64)
+            tag = base64.b64decode(tag_b64)
+            cipher = AES.new(SECRET_KEY, AES.MODE_GCM, nonce=nonce)
+            pt = cipher.decrypt_and_verify(ct, tag)
+            return pt.decode('utf-8')
+        except Exception as e:
+            raise ValueError(f"Failed to decrypt v2 encrypted password: {e}")
+
+    # v1 (AES-CBC, 'iv:ct') 하위호환 복호화
+    try:
+        iv, ct = enc_pwd.split(':')
+        iv = base64.b64decode(iv)
+        ct = base64.b64decode(ct)
+        cipher = AES.new(SECRET_KEY, AES.MODE_CBC, iv)
+        pt = unpad(cipher.decrypt(ct), AES.block_size)
+        return pt.decode('utf-8')
+    except Exception as e:
+        raise ValueError(f"Failed to decrypt legacy password format: {e}")
 
 def get_conn():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+    # SQLite 동시성/신뢰성 향상 설정
+    try:
+        c = conn.cursor()
+        c.execute('PRAGMA journal_mode=WAL;')
+        c.execute('PRAGMA synchronous=NORMAL;')
+        c.execute('PRAGMA busy_timeout=5000;')  # ms
+        conn.commit()
+    except Exception:
+        pass
     return conn
 
 import secrets
@@ -93,7 +139,8 @@ def init_db():
     c.execute('SELECT * FROM Admin WHERE NUM = 1')
     if not c.fetchone():
         from .database import encrypt_password
-        admin_password = "admin"
+        # 환경변수로 초기 관리자 비밀번호를 설정(미설정 시 'admin')
+        admin_password = os.getenv("ADMIN_INITIAL_PASSWORD", "admin")
         # print(f"Generated admin password: {admin_password}")
         c.execute('INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', ('admin', encrypt_password(admin_password)))
         conn.commit()
