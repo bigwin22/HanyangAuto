@@ -142,6 +142,16 @@ export default function Index() {
             로그인
           </button>
         </form>
+        
+        {/* Copyright 정보 */}
+        <div className="mt-8 text-center">
+          <p className="text-xs text-[#6B7280]">
+            © 2025 newme.dev. All rights reserved.
+          </p>
+          <p className="text-xs text-[#9CA3AF] mt-1">
+            한양대학교 녹화 학습 자동 재생 시스템
+          </p>
+        </div>
       </div>
 
       {/* 약관 모달 */}
@@ -238,6 +248,16 @@ export default function Index() {
               >
                 확인
               </button>
+              
+              {/* Copyright 정보 */}
+              <div className="mt-4 text-center">
+                <p className="text-xs text-[#6B7280]">
+                  © 2025 newme.dev. All rights reserved.
+                  </p>
+                <p className="text-xs text-[#9CA3AF] mt-1">
+                  한양대학교 녹화 학습 자동 재생 시스템
+                </p>
+              </div>
             </div>
           </div>
         </div>
