@@ -168,76 +168,80 @@ export default function Index() {
               </button>
             </div>
             
-            <div className="p-6 overflow-y-auto max-h-[60vh] space-y-6">
+            <div className="p-6 overflow-y-auto max-h-[60vh] space-y-6 text-sm text-[#374151] leading-relaxed">
               {/* 이용약관 */}
-              <div>
-                <h3 className="text-lg font-semibold text-[#003366] mb-3">제1조 (목적)</h3>
-                <p className="text-sm text-[#374151] leading-relaxed">
-                  본 약관은 한양대학교 자동화 시스템(이하 "서비스")의 이용과 관련하여 서비스 제공자와 이용자 간의 권리, 의무 및 책임사항, 기타 필요한 사항을 규정함을 목적으로 합니다.
-                </p>
-              </div>
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-[#003366]">이용약관</h3>
+                
+                <p className="font-bold">제1조 (목적)</p>
+                <p>본 약관은 '한양대학교 자동화 시스템'(이하 "서비스")의 이용과 관련하여 서비스 제공자와 이용자 간의 권리, 의무 및 책임사항, 기타 필요한 사항을 규정함을 목적으로 합니다.</p>
 
-              <div>
-                <h3 className="text-lg font-semibold text-[#003366] mb-3">제2조 (정의)</h3>
-                <p className="text-sm text-[#374151] leading-relaxed">
-                  1. "서비스"라 함은 한양대학교 녹화 학습 자동 재생 시스템을 의미합니다.<br/>
-                  2. "이용자"라 함은 서비스에 접속하여 본 약관에 따라 서비스를 이용하는 회원을 의미합니다.
-                </p>
-              </div>
+                <p className="font-bold">제2조 (정의)</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  <li>"서비스"라 함은 한양대학교 온라인 강의의 자동 재생을 지원하는 시스템 및 관련 모든 부대 서비스를 의미합니다.</li>
+                  <li>"이용자"라 함은 본 약관에 동의하고 서비스를 이용하기 위해 자신의 한양대학교 계정 정보(ID, 비밀번호)를 제공한 자를 의미합니다.</li>
+                  <li>"계정 정보"라 함은 이용자가 제공한 한양대학교 포털 ID와 비밀번호를 의미합니다.</li>
+                </ul>
 
-              <div>
-                <h3 className="text-lg font-semibold text-[#003366] mb-3">제3조 (서비스 이용)</h3>
-                <p className="text-sm text-[#374151] leading-relaxed">
-                  1. 서비스 이용은 서비스의 자유로운 이용을 원칙으로 합니다.<br/>
-                  2. 이용자는 서비스를 이용함에 있어서 관련 법령 및 본 약관을 준수해야 합니다.
-                </p>
+                <p className="font-bold">제3조 (서비스의 제공 및 변경)</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  <li>서비스는 연중무휴, 1일 24시간 제공함을 원칙으로 하나, 서버 점검, 기술적 문제, 기타 불가항력적인 사유가 발생할 경우 일시적으로 중단될 수 있습니다.</li>
+                  <li>서비스 제공자는 서비스의 내용, 운영상 또는 기술상의 필요에 따라 제공하고 있는 서비스의 전부 또는 일부를 변경할 수 있으며, 이에 대해 약관에서 정한 방법으로 이용자에게 공지합니다.</li>
+                </ul>
+
+                <p className="font-bold">제4조 (이용자의 의무 및 책임)</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  <li>이용자는 자신의 계정 정보를 정확하게 제공해야 하며, 정보의 부정확함으로 인해 발생하는 문제의 책임은 이용자 본인에게 있습니다.</li>
+                  <li>이용자는 자신의 계정 정보를 안전하게 관리할 책임이 있으며, 계정 정보 유출로 인한 모든 책임은 이용자에게 있습니다.</li>
+                  <li>이용자는 본 서비스를 학업 활동 보조 목적으로만 사용해야 하며, 한양대학교의 학칙 및 관련 규정을 준수할 의무가 있습니다.</li>
+                  <li>서비스 이용 결과(예: 출석 인정 여부, 성적 등)에 대한 최종 확인 책임은 이용자 본인에게 있습니다. 서비스는 보조 수단일 뿐이며, 출석 결과를 보장하지 않습니다.</li>
+                </ul>
+
+                <p className="font-bold">제5조 (면책 조항)</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  <li>서비스 제공자는 천재지변, 한양대학교 시스템의 변경 또는 오류, 통신 장애 등 불가항력적인 사유로 인해 서비스를 제공할 수 없는 경우 책임이 면제됩니다.</li>
+                  <li>서비스 제공자는 이용자의 귀책사유(예: 계정 정보 오기입, 학칙 위반)로 인한 서비스 이용 장애나 불이익에 대하여 책임을 지지 않습니다.</li>
+                  <li>본 서비스는 "있는 그대로(As-Is)" 및 "이용 가능한 대로(As-Available)" 제공됩니다. 서비스 제공자는 서비스의 완전성, 안정성, 정확성, 특정 목적에의 적합성을 보증하지 않습니다.</li>
+                  <li>서비스 제공자는 서비스 이용과 관련하여 이용자에게 발생한 어떠한 학업적 불이익(예: 출석 미인정, 성적 불이익)이나 기타 간접적, 부수적, 특별 또는 결과적 손해에 대해서도 법률이 허용하는 최대 범위 내에서 책임을 지지 않습니다.</li>
+                  <li>서비스의 사용 여부에 대한 결정은 전적으로 이용자의 자율적인 판단에 따르며, 그로 인해 발생하는 모든 책임은 이용자 본인에게 있습니다.</li>
+                </ul>
+
+                <p className="font-bold">제6조 (이용자에 대한 통지)</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  <li>서비스 제공자가 이용자에 대한 통지를 하는 경우, 본 약관에 별도 규정이 없는 한 이용자가 제공한 ID를 기반으로 한 한양대학교 이메일 주소로 할 수 있습니다.</li>
+                  <li>서비스 제공자는 불특정 다수 이용자에 대한 통지의 경우, 서비스의 공지사항 화면에 게시함으로써 개별 통지에 갈음할 수 있습니다.</li>
+                </ul>
               </div>
 
               {/* 개인정보처리방침 */}
-              <div className="border-t border-[#E5E7EB] pt-6">
-                <h3 className="text-lg font-semibold text-[#003366] mb-3">개인정보처리방침</h3>
-                <p className="text-sm text-[#374151] leading-relaxed mb-3">
-                  서비스와 그 운영 주체는 개인정보보호법에 따라 이용자의 개인정보 보호 및 권익을 보호하고 개인정보와 관련한 이용자의 고충을 원활하게 처리할 수 있도록 다음과 같은 처리방침을 두고 있습니다.
-                </p>
+              <div className="border-t border-[#E5E7EB] pt-6 space-y-4">
+                <h3 className="text-lg font-semibold text-[#003366]">개인정보처리방침</h3>
                 
-                <div className="space-y-2">
-                  <p className="text-sm text-[#374151]">
-                    <strong>1. 개인정보의 처리목적:</strong> 서비스 제공 및 이용자 관리
-                  </p>
-                  <p className="text-sm text-[#374151]">
-                    <strong>2. 개인정보의 보유기간:</strong> 서비스 이용 종료 시까지
-                  </p>
-                  <p className="text-sm text-[#374151]">
-                    <strong>3. 개인정보의 제3자 제공:</strong> 제공하지 않음
-                  </p>
-                  <p className="text-sm text-[#374151]">
-                    <strong>4. 이용자의 권리:</strong> 개인정보 열람, 정정, 삭제, 처리정지 요구 가능
-                  </p>
-                </div>
-              </div>
+                <p>서비스 제공자는 개인정보보호법 등 관련 법령을 준수하며, 이용자의 개인정보 보호를 위해 최선을 다하고 있습니다.</p>
 
-              {/* 권리 및 의무 */}
-              <div className="border-t border-[#E5E7EB] pt-6">
-                <h3 className="text-lg font-semibold text-[#003366] mb-3">이용자의 권리 및 의무</h3>
-                <div className="space-y-2">
-                  <p className="text-sm text-[#374151]">
-                    <strong>권리:</strong>
-                  </p>
-                  <ul className="text-sm text-[#374151] ml-4 space-y-1">
-                    <li>• 서비스 이용권</li>
-                    <li>• 개인정보 보호권</li>
-                    <li>• 서비스 개선 요구권</li>
-                  </ul>
-                  
-                  <p className="text-sm text-[#374151] mt-3">
-                    <strong>의무:</strong>
-                  </p>
-                  <ul className="text-sm text-[#374151] ml-4 space-y-1">
-                    <li>• 관련 법령 및 약관 준수의무</li>
-                    <li>• 서비스 이용 시 부정사용 금지</li>
-                    <li>• 타인의 권리 침해 금지</li>
-                  </ul>
-                </div>
+                <p className="font-bold">1. 개인정보의 수집 및 이용 목적</p>
+                <p>서비스는 다음의 목적을 위해 개인정보를 수집하고 이용합니다.</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  <li>한양대학교 온라인 강의 자동 재생 기능 수행</li>
+                  <li>서비스 관련 고지사항 전달 및 이용자 문의 응대</li>
+                </ul>
+
+                <p className="font-bold">2. 수집하는 개인정보 항목</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  <li>필수항목: 한양대학교 포털 ID, 암호화된 비밀번호</li>
+                </ul>
+
+                <p className="font-bold">3. 개인정보의 보유 및 이용기간</p>
+                <p>이용자의 개인정보는 서비스 이용 계약이 유지되는 동안 보유 및 이용됩니다. 이용자가 회원 탈퇴를 요청하거나 개인정보 수집 및 이용에 대한 동의를 철회하는 경우, 해당 개인정보를 지체 없이 파기합니다.</p>
+
+                <p className="font-bold">4. 개인정보의 제3자 제공</p>
+                <p>서비스 제공자는 이용자의 개인정보를 원칙적으로 외부에 제공하지 않습니다. 다만, 법령의 규정에 의거하거나 수사 목적으로 법령에 정해진 절차와 방법에 따라 수사기관의 요구가 있는 경우는 예외로 합니다.</p>
+
+                <p className="font-bold">5. 개인정보의 안전성 확보 조치</p>
+                <p>서비스 제공자는 이용자의 비밀번호를 암호화하여 저장 및 관리하고 있으며, 해킹이나 컴퓨터 바이러스 등에 의한 개인정보 유출 및 훼손을 막기 위하여 보안 프로그램을 설치하고 주기적인 갱신·점검을 하는 등 기술적/관리적 보호 대책을 강구하고 있습니다.</p>
+
+                <p className="font-bold">6. 정보주체의 권리·의무 및 행사방법</p>
+                <p>이용자는 언제든지 등록되어 있는 자신의 개인정보를 조회하거나 수정·삭제를 요청할 수 있습니다. 서비스 탈퇴(동의 철회)를 통해 개인정보의 수집 및 이용 동의를 철회할 수 있습니다.</p>
               </div>
             </div>
             
