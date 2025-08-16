@@ -170,7 +170,7 @@ export default function Index() {
               <div>
                 <h3 className="text-lg font-semibold text-[#003366] mb-3">제2조 (정의)</h3>
                 <p className="text-sm text-[#374151] leading-relaxed">
-                  1. "서비스"라 함은 한양대학교에서 제공하는 자동화 시스템을 의미합니다.<br/>
+                  1. "서비스"라 함은 한양대학교 녹화 학습 자동 재생 시스템을 의미합니다.<br/>
                   2. "이용자"라 함은 서비스에 접속하여 본 약관에 따라 서비스를 이용하는 회원을 의미합니다.
                 </p>
               </div>
@@ -187,7 +187,7 @@ export default function Index() {
               <div className="border-t border-[#E5E7EB] pt-6">
                 <h3 className="text-lg font-semibold text-[#003366] mb-3">개인정보처리방침</h3>
                 <p className="text-sm text-[#374151] leading-relaxed mb-3">
-                  한양대학교는 개인정보보호법에 따라 이용자의 개인정보 보호 및 권익을 보호하고 개인정보와 관련한 이용자의 고충을 원활하게 처리할 수 있도록 다음과 같은 처리방침을 두고 있습니다.
+                  서비스와 그 운영 주체는 개인정보보호법에 따라 이용자의 개인정보 보호 및 권익을 보호하고 개인정보와 관련한 이용자의 고충을 원활하게 처리할 수 있도록 다음과 같은 처리방침을 두고 있습니다.
                 </p>
                 
                 <div className="space-y-2">
@@ -198,7 +198,7 @@ export default function Index() {
                     <strong>2. 개인정보의 보유기간:</strong> 서비스 이용 종료 시까지
                   </p>
                   <p className="text-sm text-[#374151]">
-                    <strong>3. 개인정보의 제3자 제공:</strong> 원칙적으로 제공하지 않음
+                    <strong>3. 개인정보의 제3자 제공:</strong> 제공하지 않음
                   </p>
                   <p className="text-sm text-[#374151]">
                     <strong>4. 이용자의 권리:</strong> 개인정보 열람, 정정, 삭제, 처리정지 요구 가능
