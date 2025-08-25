@@ -1,11 +1,12 @@
 import os
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Optional
 from logging.handlers import RotatingFileHandler
 
 # 서울 시간대
-KST = timezone(timedelta(hours=9))
+KST = ZoneInfo('Asia/Seoul')
 
 LOG_BASE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
 
