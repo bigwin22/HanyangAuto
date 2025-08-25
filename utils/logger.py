@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -7,6 +8,11 @@ from logging.handlers import RotatingFileHandler
 
 # 서울 시간대
 KST = ZoneInfo('Asia/Seoul')
+
+def kst_time_converter(seconds: Optional[float] = None) -> time.struct_time:
+    if seconds is None:
+        seconds = time.time()
+    return datetime.fromtimestamp(seconds, KST).timetuple()
 
 LOG_BASE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
 
@@ -73,6 +79,8 @@ class HanyangLogger:
                 self.log_path, maxBytes=MAX_LOG_SIZE, backupCount=BACKUP_COUNT, encoding='utf-8'
             )
             formatter = logging.Formatter('[%(asctime)s][%(subject)s][%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+            # 로거의 asctime을 KST로 강제
+            formatter.converter = kst_time_converter
             self.file_handler.setFormatter(formatter)
             self.logger.addHandler(self.file_handler)
             
