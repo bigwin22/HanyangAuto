@@ -22,7 +22,7 @@ def init_driver() -> webdriver.Chrome:
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
-    chrome_options.add_argument(f"--user-data-dir=/app/data/chrome_user_data/{uuid.uuid4()}")
+    # chrome_options.add_argument(f"--user-data-dir=/app/data/chrome_user_data/{uuid.uuid4()}")
     chrome_options.add_argument("--no-first-run")
     chrome_options.add_argument("--no-default-browser-check")
  
