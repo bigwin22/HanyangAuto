@@ -34,6 +34,11 @@ if [ -n "$EXISTING" ]; then
   docker rm -f "$CONTAINER_NAME" || true
 fi
 
+# logs와 data 폴더가 없으면 생성
+[ -d "./logs" ] || mkdir ./logs
+[ -d "./data" ] || mkdir ./data
+
+
 # 외부 네트워크가 없다면 생성 (traefik-net)
 docker network inspect traefik-net >/dev/null 2>&1 || docker network create traefik-net || true
 
