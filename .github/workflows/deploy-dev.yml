@@ -12,6 +12,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Check commit message for reset flag
+        id: check-reset
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == *"[reset]"* ]]; then
+            echo "reset=true" >> $GITHUB_OUTPUT
+            echo "커밋 메시지에 [reset] 플래그가 감지되었습니다."
+          else
+            echo "reset=false" >> $GITHUB_OUTPUT
+            echo "일반 배포를 진행합니다."
+          fi
+
       - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
@@ -57,8 +68,26 @@ jobs:
             export CONTAINER_NAME=hanyangauto-dev
             export PORT=8001
             export IMAGE_TYPE=dev
-
-
+            #########################
+            # [reset] 플래그가 있는 경우 도커 이미지와 컨테이너를 모두 정리
+            if [[ "${{ steps.check-reset.outputs.reset }}" == "true" ]]; then
+              echo "=== [RESET] 모드: 도커 이미지와 컨테이너를 모두 정리합니다 ==="
+              
+              # 실행 중인 컨테이너 중지 및 제거
+              docker stop $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 중지되었거나 존재하지 않습니다."
+              docker rm $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 제거되었거나 존재하지 않습니다."
+              
+              # 해당 컨테이너만 중지 및 제거
+              docker stop $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 중지되었거나 존재하지 않습니다."
+              docker rm $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 제거되었거나 존재하지 않습니다."
+              # 도커 dev 태그 이미지만 제거
+              docker rmi $DOCKER_IMAGE 2>/dev/null || echo "이미지가 이미 제거되었거나 존재하지 않습니다."
+              # 사용하지 않는 도커 리소스 정리
+              docker system prune -f
+              
+              echo "=== 도커 리소스 정리 완료 ==="
+            fi
+            #########################
             # Docker Compose로 배포 재시작
             chmod +x ./shFILES/start.sh
             ./shFILES/start.sh

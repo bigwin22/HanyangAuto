@@ -3,6 +3,7 @@ services:
     image: ${DOCKER_IMAGE} # 사용할 이미지를 명시적으로 지정
     container_name: ${CONTAINER_NAME}
     restart: always
+    user: "${UID:-1000}:${GID:-1000}"
     environment:
       - PORT=${PORT}
     
