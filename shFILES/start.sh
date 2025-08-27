@@ -3,13 +3,18 @@
 
 # 에러 발생 시 즉시 중단
 set -e
-
-# 필수 환경 변수 확인 (GitHub Actions 또는 실행 환경에서 주입되어야 함)
-if [ -z "${PROJECT_DIR:-}" ]; then echo "PROJECT_DIR 환경 변수가 필요합니다"; exit 1; fi
-if [ -z "${DOCKER_IMAGE:-}" ]; then echo "DOCKER_IMAGE 환경 변수가 필요합니다"; exit 1; fi
-if [ -z "${DOMAIN:-}" ]; then echo "DOMAIN 환경 변수가 필요합니다"; exit 1; fi
-if [ -z "${CONTAINER_NAME:-}" ]; then echo "CONTAINER_NAME 환경 변수가 필요합니다"; exit 1; fi
-if [ -z "${PORT:-}" ]; then echo "PORT 환경 변수가 필요합니다"; exit 1; fi
+# .env 파일이 없으면 생성하고, 환경 변수들을 기록
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+  echo ".env 파일이 존재하지 않아 새로 생성합니다."
+  cat <<EOF > "$PROJECT_DIR/.env"
+DOCKER_IMAGE=${DOCKER_IMAGE}
+DOMAIN=${DOMAIN}
+CONTAINER_NAME=${CONTAINER_NAME}
+PORT=${PORT}
+EOF
+else
+  echo ".env 파일이 이미 존재합니다. 덮어쓰지 않습니다."
+fi
 
 # Docker Compose 프로젝트 이름을 환경별로 고유하게 설정
 export CONTAINER_NAME="${CONTAINER_NAME}"

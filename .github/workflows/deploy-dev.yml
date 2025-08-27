@@ -46,6 +46,13 @@ jobs:
             PROJECT_PATH="/home/kth88/services/development/HanyangAuto"
             DEPLOY_DIR="/home/kth88/services/development/"
 
+            # Docker 이미지 및 환경 변수 설정
+            export PROJECT_DIR="$PROJECT_PATH"
+            export DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:dev"
+            export DOMAIN=dev-hanyang.newme.dev
+            export CONTAINER_NAME="${{ secrets.DOCKER_REPO }}"
+            export PORT=8001
+
             #########################
             # [reset] 플래그가 있는 경우 도커 이미지와 컨테이너를 모두 정리
             if [[ "${{ steps.check-reset.outputs.reset }}" == "true" ]]; then
@@ -66,7 +73,7 @@ jobs:
               echo "=== 도커 리소스 정리 완료 ==="
             fi
             #########################
-            
+
             # 프로젝트 디렉토리가 존재하는지 확인
             if [ -d "$PROJECT_PATH" ]; then
               echo "프로젝트 디렉토리가 존재합니다. git pull을 시도합니다."
@@ -81,14 +88,6 @@ jobs:
               git checkout dev || git checkout -b dev origin/dev
               git pull origin dev
             fi
-
-            # Docker 이미지 및 환경 변수 설정
-            export PROJECT_DIR="$PROJECT_PATH"
-            export DOCKER_IMAGE=kth88/hanyang-automation:dev
-            export DOMAIN=dev-hanyang.newme.dev
-            export CONTAINER_NAME=hanyangauto-dev
-            export PORT=8001
-            export IMAGE_TYPE=dev
 
             # Docker Compose로 배포 재시작
             chmod +x ./shFILES/start.sh
