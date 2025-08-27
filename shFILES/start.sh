@@ -12,8 +12,8 @@ if [ -z "${CONTAINER_NAME:-}" ]; then echo "CONTAINER_NAME 환경 변수가 필�
 if [ -z "${PORT:-}" ]; then echo "PORT 환경 변수가 필요합니다"; exit 1; fi
 
 # Docker Compose 프로젝트 이름을 환경별로 고유하게 설정
-export COMPOSE_PROJECT_NAME="${CONTAINER_NAME}"
-echo "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}"
+export CONTAINER_NAME="${CONTAINER_NAME}"
+echo "CONTAINER_NAME=${COMPOSE_PROJECT_NAME}"
 
 echo "배포를 시작합니다..."
 
