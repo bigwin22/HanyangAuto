@@ -50,7 +50,7 @@ jobs:
             export PROJECT_DIR="$PROJECT_PATH"
             export DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:dev"
             export DOMAIN=dev-hanyang.newme.dev
-            export CONTAINER_NAME="${{ secrets.DOCKER_REPO }}"
+            export CONTAINER_NAME=hanyangauto-dev
             export PORT=8001
 
             #########################

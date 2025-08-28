@@ -2,3 +2,6 @@
 # SSH keys
 ssh_private_key.txt
 ssh_public_key.txt
+.key
+.db
+.env

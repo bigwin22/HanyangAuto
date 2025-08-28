@@ -33,7 +33,14 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             PROJECT_PATH="/home/kth88/services/product/HanyangAuto"
-            DEPLOY_DIR="/home/kth88/services/product/"
+            DEPLOY_DIR="/home/kth88/product/development/"
+
+            # Docker 이미지 및 환경 변수 설정
+            export PROJECT_DIR="$PROJECT_PATH"
+            export DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:latest"
+            export DOMAIN=dev-hanyang.newme.dev
+            export CONTAINER_NAME=hanyangauto-dev
+            export PORT=8000
 
             # 프로젝트 디렉토리가 존재하는지 확인
             if [ -d "$PROJECT_PATH" ]; then
@@ -46,14 +53,6 @@ jobs:
               gh repo clone HanyangAuto
               cd "$PROJECT_PATH"
             fi
-
-            # Docker 이미지 및 환경 변수 설정
-            export PROJECT_DIR="$PROJECT_PATH"
-            export DOCKER_IMAGE=kth88/hanyang-automation:latest
-            export DOMAIN=hanyang.newme.dev
-            export CONTAINER_NAME=hanyangauto-main
-            export PORT=8000
-            export IMAGE_TYPE=latest
 
             # Docker Compose로 배포 재시작
             chmod +x ./shFILES/start.sh
