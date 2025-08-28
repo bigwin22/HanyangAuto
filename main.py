@@ -17,6 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import fcntl
 from typing import Dict
+ 
 
 
 app = FastAPI()
@@ -209,7 +210,6 @@ def run_automation_for_user(user_id, pwd):
     system_logger.info('automation', f'자동화 시작: {user_id}')
     user_logger.info('automation', '자동화 시작')
     system_logger.info('automation', f'강의 목록 조회 시작: {user_id}')
-    user_logger.info('automation', '강의 목록 조회 시작')
     result = run_user_automation(user_id, pwd, learned, db_add_learned)
     if result['success']:
         system_logger.info('automation', f'자동화 완료: {user_id} ({result["msg"]})')
@@ -227,6 +227,7 @@ def run_automation_for_all_users():
 
 # APScheduler로 매일 7시, 서버 시작 시 자동화
 def _is_primary_process() -> bool:
+    fd = None
     try:
         lock_path = '/tmp/hanyangauto_scheduler.lock'
         fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
@@ -234,17 +235,19 @@ def _is_primary_process() -> bool:
         globals()['__primary_lock_fd'] = fd  # keep FD open
         return True
     except Exception:
-        try:
-            os.close(fd)
-        except Exception:
-            pass
+        if fd is not None:
+            try:
+                os.close(fd)
+            except Exception:
+                pass
         return False
 
-SCHEDULER_ENABLED = os.getenv('SCHEDULER_ENABLED', 'true').lower() == 'true'
-if SCHEDULER_ENABLED and _is_primary_process():
+if _is_primary_process():
     scheduler = BackgroundScheduler(timezone='Asia/Seoul')
     scheduler.add_job(run_automation_for_all_users, 'cron', hour=7, minute=0)
     scheduler.start()
+    # 스케줄러 시작 로그
+    HanyangLogger('system').info('scheduler', 'APScheduler가 시작되었습니다. (Asia/Seoul)')
     # 서버 시작 시 자동화 (초기 한 번)
     threading.Thread(target=run_automation_for_all_users, daemon=True).start()
 
@@ -374,4 +377,22 @@ def admin_change_password(req: AdminChangePasswordRequest, request: Request):
         )
     db.update_admin_pwd(admin[1], req.newPassword)
     return {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
+
+# 스케줄러 잡 조회용 (관리자)
+@app.get("/api/admin/scheduler/jobs", dependencies=[Depends(get_current_admin)])
+def get_scheduler_jobs():
+    try:
+        jobs = []
+        for job in scheduler.get_jobs():
+            jobs.append({
+                "id": job.id,
+                "name": job.name,
+                "trigger": str(job.trigger),
+                "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+            })
+        return {"success": True, "jobs": jobs}
+    except NameError:
+        return {"success": False, "message": "스케줄러가 초기화되지 않았습니다."}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
 
