@@ -15,7 +15,9 @@ EOF
 
 # Docker Compose 프로젝트 이름을 환경별로 고유하게 설정
 export CONTAINER_NAME="${CONTAINER_NAME}"
-echo "CONTAINER_NAME=${COMPOSE_PROJECT_NAME}"
+export COMPOSE_PROJECT_NAME="${CONTAINER_NAME}"
+echo "CONTAINER_NAME=${CONTAINER_NAME}"
+echo "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}"
 
 echo "배포를 시작합니다..."
 
