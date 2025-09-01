@@ -33,7 +33,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             PROJECT_PATH="/home/kth88/services/product/HanyangAuto"
-            DEPLOY_DIR="/home/kth88/product/development/"
+            DEPLOY_DIR="/home/kth88/services/product"
 
             # Docker 이미지 및 환경 변수 설정
             export PROJECT_DIR="$PROJECT_PATH"
