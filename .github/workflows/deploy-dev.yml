@@ -11,6 +11,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+      
+      - name: Check commit message for stop flag
+        id: check-stop
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == *"[stop]"* ]]; then
+            echo "stop=true" >> $GITHUB_OUTPUT
+            echo "커밋 메시지에 [stop] 플래그가 감지되어 작업을 중단합니다."
+            exit 0
+          else
+            echo "stop=false" >> $GITHUB_OUTPUT
+            echo "계속 진행합니다."
+          fi
+
 
       - name: Check commit message for reset flag
         id: check-reset
@@ -59,10 +72,6 @@ jobs:
               echo "=== [RESET] 모드: 도커 이미지와 컨테이너를 모두 정리합니다 ==="
               
               # 실행 중인 컨테이너 중지 및 제거
-              docker stop $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 중지되었거나 존재하지 않습니다."
-              docker rm $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 제거되었거나 존재하지 않습니다."
-              
-              # 해당 컨테이너만 중지 및 제거
               docker stop $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 중지되었거나 존재하지 않습니다."
               docker rm $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 제거되었거나 존재하지 않습니다."
               # 도커 dev 태그 이미지만 제거
