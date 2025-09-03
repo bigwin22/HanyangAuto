@@ -5,7 +5,9 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
-
+from utils.selenium_utils import init_driver
+from utils.logger import HanyangLogger
+from utils.database import update_user_status
 
 def login(driver: webdriver.Chrome, id: str, pwd: str, logger=None) -> Dict[str, Union[bool, str]]:
     """
@@ -155,7 +157,7 @@ def get_lectures(driver: webdriver.Chrome, course_list: List[str]) -> List[str]:
         except Exception as e:
             continue
     return lecture_list
-def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union[bool, str]]:
+def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> Dict[str, Union[bool, str]]:
     """
     개별 강의를 자동으로 수강하고 완료합니다.
     
@@ -184,6 +186,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
         Exception: 각 단계에서 발생하는 예외를 처리하여 실패 메시지로 반환
     """
     driver.get(lecture_url)
+    user_logger = HanyangLogger('user', user_id=str(user_id))
     ##tool_content iframe으로 전환
     try:
         WebDriverWait(driver, 2).until(
@@ -249,7 +252,8 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
                     break
                 progress_button = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button")
                 progress_button.click()
-
+                now_percentage = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(2)").text
+                user_logger.info('progress', f'동영상 강의 진행 상태: {now_percentage}')
         except Exception as e:
             pass # 동영상 강의가 아닐 경우(단순 파일 강의 일 가능성이 있음)
             #return {"learn": False, "msg": f"동영상 강의 프레임 전환 실패: {e}"}
@@ -267,9 +271,7 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
     Returns:
         dict: {'success': bool, 'msg': str, 'learned': list}
     """
-    from utils.selenium_utils import init_driver
-    from utils.logger import HanyangLogger
-    from utils.database import update_user_status
+
     driver = None
     user_logger = HanyangLogger('user', user_id=str(user_id))
     try:
@@ -313,7 +315,7 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: list, db_add_l
         learned = []
         for lec_url in to_learn:
             user_logger.info('lecture', f'강의 수강 시작: {lec_url}')
-            result = learn_lecture(driver, lec_url)
+            result = learn_lecture(driver, lec_url, user_id)
             if result.get('learn'):
                 user_logger.info('lecture', f'강의 수강 완료: {lec_url}')
                 learned.append(lec_url)
