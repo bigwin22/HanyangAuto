@@ -253,6 +253,9 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
                 progress_button = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button")
                 progress_button.click()
                 try:
+                    WebDriverWait(driver, 0.5).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(2)"))
+                    )
                     now_percentage = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(2)").text
                     user_logger.info('progress', f'동영상 강의 진행 상태: {now_percentage}')
                 except Exception as e:
