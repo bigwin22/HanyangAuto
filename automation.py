@@ -212,45 +212,47 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
             WebDriverWait(driver, 0.5).until(
                 EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnlailvc-commons-container > iframe"))
             )
-        except Exception as e:
-            return {"learn": False, "msg": f"동영상 강의 프레임 전환 실패: {e}"}
-        # 동영상 강의 시작 버튼 클릭
-        obj_click(driver,"#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div") # 동영상 강의 시작 버튼 클릭
-        try:
-            ##confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn 클릭해보고 안되면
-            ##confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-cancel-btn.confirm-btn 클릭
-            WebDriverWait(driver, 0.5).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"))
-            )# 확인 버튼이 나타날 때까지 기다리기(이어 듣기에 관한 팝업)
-            WebDriverWait(driver, 0.5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"))
-            )# 확인 버튼이 클릭 가능할 때까지 기다리기
-            driver.find_element(By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn").click()
-        except Exception as e:
-            pass # 확인 버튼이 없으면 그냥 넘어감
-        # 이전 iframe으로 돌아가기
-        driver.switch_to.default_content()
-        try:
-            WebDriverWait(driver, 0.5).until(
-                EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#tool_content"))
-            )#수강 진행도 업데이트를 위해 전환함
-        except Exception as e:
-            return {"learn": False, "msg": f"수강 진행도 확인을 위한 툴 컨텐츠 프레임 전환 실패: {e}"}
-        while True:
+            # 동영상 강의 시작 버튼 클릭
+            obj_click(driver,"#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div") # 동영상 강의 시작 버튼 클릭
+            try:
+                ##confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn 클릭해보고 안되면
+                ##confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-cancel-btn.confirm-btn 클릭
+                WebDriverWait(driver, 0.5).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"))
+                )# 확인 버튼이 나타날 때까지 기다리기(이어 듣기에 관한 팝업)
+                WebDriverWait(driver, 0.5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"))
+                )# 확인 버튼이 클릭 가능할 때까지 기다리기
+                driver.find_element(By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn").click()
+            except Exception as e:
+                pass # 확인 버튼이 없으면 그냥 넘어감
+            # 이전 iframe으로 돌아가기
+            driver.switch_to.default_content()
             try:
                 WebDriverWait(driver, 0.5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3)"))
-                )
-                WebDriverWait(driver, 0.5).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button"))
-                )
+                    EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#tool_content"))
+                )#수강 진행도 업데이트를 위해 전환함
             except Exception as e:
-                return {"learn": False, "msg": f"동영상 강의 진행 확인 상태 요소 없음: {e}"}
-            complete_status = driver.find_elements(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3)")
-            if complete_status and "완료" == complete_status[0].text:
-                break
-            progress_button = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button")
-            progress_button.click()
+                return {"learn": False, "msg": f"수강 진행도 확인을 위한 툴 컨텐츠 프레임 전환 실패: {e}"}
+            while True:
+                try:
+                    WebDriverWait(driver, 0.5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3)"))
+                    )
+                    WebDriverWait(driver, 0.5).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button"))
+                    )
+                except Exception as e:
+                    return {"learn": False, "msg": f"동영상 강의 진행 확인 상태 요소 없음: {e}"}
+                complete_status = driver.find_elements(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3)")
+                if complete_status and "완료" == complete_status[0].text:
+                    break
+                progress_button = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button")
+                progress_button.click()
+
+        except Exception as e:
+            pass # 동영상 강의가 아닐 경우(단순 파일 강의 일 가능성이 있음)
+            #return {"learn": False, "msg": f"동영상 강의 프레임 전환 실패: {e}"}
 
     return {"learn": True, "msg": f"강의 학습 완료: {lecture_url}"}
 
