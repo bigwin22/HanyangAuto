@@ -252,8 +252,11 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
                     break
                 progress_button = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button")
                 progress_button.click()
-                now_percentage = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(2)").text
-                user_logger.info('progress', f'동영상 강의 진행 상태: {now_percentage}')
+                try:
+                    now_percentage = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(2)").text
+                    user_logger.info('progress', f'동영상 강의 진행 상태: {now_percentage}')
+                except Exception as e:
+                    return {"learn": False, "msg": f"동영상 강의 진행 상태 로깅 실패: {e}"}
         except Exception as e:
             pass # 동영상 강의가 아닐 경우(단순 파일 강의 일 가능성이 있음)
             #return {"learn": False, "msg": f"동영상 강의 프레임 전환 실패: {e}"}
