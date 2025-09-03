@@ -239,14 +239,14 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str) -> Dict[str, Union
         while True:
             try:
                 WebDriverWait(driver, 0.5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3) > span"))
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3)"))
                 )
                 WebDriverWait(driver, 0.5).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button"))
                 )
             except Exception as e:
                 return {"learn": False, "msg": f"동영상 강의 진행 확인 상태 요소 없음: {e}"}
-            complete_status = driver.find_elements(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3) > span")
+            complete_status = driver.find_elements(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3)")
             if complete_status and "완료" == complete_status[0].text:
                 break
             progress_button = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button")
