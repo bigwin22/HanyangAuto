@@ -94,5 +94,4 @@ USER app
 EXPOSE 8000 8001
 
 # Xvfb를 시작하고 애플리케이션 실행
-ENTRYPOINT ["/app/start.sh"]
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WORKERS:-2}"]
