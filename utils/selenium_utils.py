@@ -9,22 +9,26 @@ from selenium.webdriver.chrome.service import Service
 
 def init_driver() -> webdriver.Chrome:
     """
-    웹 드라이버 초기화 함수
+    웹 드라이버 초기화 함수 (가상 디스플레이 사용)
     """
     chrome_options = Options()
     chrome_options.binary_location = "/usr/bin/chrome"
     service = Service(executable_path="/usr/bin/chromedriver")
 
-    chrome_options.add_argument("--headless")
+    # 가상 디스플레이 설정
+    chrome_options.add_argument("--display=:99")
+    chrome_options.add_argument("--window-size=1920,1080")
+    
+    # 기본 Chrome 옵션
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
-    # chrome_options.add_argument(f"--user-data-dir=/app/data/chrome_user_data/{uuid.uuid4()}")
     chrome_options.add_argument("--no-first-run")
     chrome_options.add_argument("--no-default-browser-check")
+
  
     return webdriver.Chrome(service=service, options=chrome_options)
 

@@ -16,6 +16,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
+    # --- Xvfb 가상 디스플레이 설치 ---
+    xvfb \
+    x11-utils \
+    x11-xserver-utils \
     # --- 크롬 의존성 라이브러리 추가 ---
     libglib2.0-0 \
     libnss3 \
@@ -73,10 +77,19 @@ RUN groupadd -g 1000 app \
     && mkdir -p /app/data /app/logs \
     && chown -R app:app /app
 
+# Xvfb 시작 스크립트 생성
+RUN echo '#!/bin/bash\n\
+# Xvfb 가상 디스플레이 시작\n\
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &\n\
+export DISPLAY=:99\n\
+# 애플리케이션 시작\n\
+exec "$@"' > /app/start.sh && chmod +x /app/start.sh
+
 USER app
 
 # Informational expose; actual runtime port is controlled by $PORT
 EXPOSE 8000 8001
 
-# Use $PORT if provided (e.g., 8001 for dev), default to 8000
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WORKERS:-2}"]
+# Xvfb를 시작하고 애플리케이션 실행
+ENTRYPOINT ["/app/start.sh"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
