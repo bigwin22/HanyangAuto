@@ -17,7 +17,7 @@ def init_driver() -> webdriver.Chrome:
 
     # 가상 디스플레이 설정
     chrome_options.add_argument("--display=:99")
-    chrome_options.add_argument("--window-size=1920,1080")
+    # chrome_options.add_argument("--window-size=1920,1080")
     
     # 기본 Chrome 옵션
     chrome_options.add_argument("--no-sandbox")
