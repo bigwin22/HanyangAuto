@@ -85,6 +85,9 @@ export DISPLAY=:99\n\
 # 애플리케이션 시작\n\
 exec "$@"' > /app/start.sh && chmod +x /app/start.sh
 
+# 모든 프로세스/셸에서 DISPLAY 기본값 설정
+ENV DISPLAY=:99
+
 USER app
 
 # Informational expose; actual runtime port is controlled by $PORT
