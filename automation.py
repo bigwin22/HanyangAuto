@@ -214,12 +214,12 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
             ##confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn 이전 시점 재생?
 
         try:
-            WebDriverWait(driver, 0.5).until(
+            WebDriverWait(driver, 3).until(
                 EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnlailvc-commons-container > iframe"))
             )
             # 동영상 강의 시작 버튼 클릭
             WebDriverWait(driver, 3).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"))
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div"))
                 )# 확인 버튼이 클릭 가능할 때까지 기다리기
             obj_click(driver,"#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div") # 동영상 강의 시작 버튼 클릭
             try:
