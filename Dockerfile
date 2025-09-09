@@ -66,7 +66,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY main.py .
 COPY automation.py .
 COPY utils/ ./utils/
-COPY shFILES/ ./shFILES/
 
 # 빌드된 프론트엔드 파일 복사
 COPY --from=builder /app/web/dist/spa /app/web/dist/spa
@@ -83,7 +82,7 @@ RUN echo '#!/bin/bash\n\
 Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &\n\
 export DISPLAY=:99\n\
 # 애플리케이션 시작\n\
-exec "$@"' > /app/start.sh && chmod +x /app/start.sh
+exec "$@"' > /app/monitor.sh && chmod +x /app/monitor.sh
 
 # 모든 프로세스/셸에서 DISPLAY 기본값 설정
 ENV DISPLAY=:99
@@ -94,4 +93,4 @@ USER app
 EXPOSE 8000 8001
 
 # Xvfb를 시작하고 애플리케이션 실행
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WORKERS:-2}"]
+CMD ["sh", "-c", "/app/monitor.sh uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WORKERS:-2}"]
