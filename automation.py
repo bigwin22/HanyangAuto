@@ -215,7 +215,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
 
         try:
             WebDriverWait(driver, 0.5).until(
-                EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnlailvc-commons-container > iframe"))
+                EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnlailvc-commons-container"))
             )
             # 동영상 강의 시작 버튼 클릭
             obj_click(driver,"#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div") # 동영상 강의 시작 버튼 클릭
