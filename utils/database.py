@@ -55,9 +55,11 @@ def load_or_generate_key():
     # 파일 보관 키 사용(없으면 생성)
     os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)
     if os.path.exists(KEY_FILE_PATH):
+        print("DLDL:JKD:LJD:LJDLJK:DLJD:LJ")
         with open(KEY_FILE_PATH, 'rb') as f:
             key = f.read()
     else:
+        print("dndndndndndndndndndndndndndndndndn")
         # 기본은 32바이트 키(AES-256)
         key = os.urandom(32)
         with open(KEY_FILE_PATH, 'wb') as f:
