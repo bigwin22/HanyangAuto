@@ -211,6 +211,8 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
         progress_button.click()
             
     except Exception as e: # pdf 강의가 아닐 경우(예: 동영상 강의)
+            ##confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn 이전 시점 재생?
+
         try:
             WebDriverWait(driver, 0.5).until(
                 EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnlailvc-commons-container > iframe"))
@@ -226,6 +228,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
                 WebDriverWait(driver, 0.5).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"))
                 )# 확인 버튼이 클릭 가능할 때까지 기다리기
+                user_logger.info('progress', f'기존 수강 메시지 감지됨 및 클릭 가능')
                 driver.find_element(By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn").click()
             except Exception as e:
                 pass # 확인 버튼이 없으면 그냥 넘어감
