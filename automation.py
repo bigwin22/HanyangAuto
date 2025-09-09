@@ -215,17 +215,17 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
 
         try:
             WebDriverWait(driver, 0.5).until(
-                EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnlailvc-commons-container"))
+                EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnlailvc-commons-container > iframe"))
             )
             # 동영상 강의 시작 버튼 클릭
             obj_click(driver,"#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div") # 동영상 강의 시작 버튼 클릭
             try:
                 ##confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn 클릭해보고 안되면
                 ##confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-cancel-btn.confirm-btn 클릭
-                WebDriverWait(driver, 0.5).until(
+                WebDriverWait(driver, 5).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"))
                 )# 확인 버튼이 나타날 때까지 기다리기(이어 듣기에 관한 팝업)
-                WebDriverWait(driver, 0.5).until(
+                WebDriverWait(driver, 5).until(
                     EC.element_to_be_clickable((By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"))
                 )# 확인 버튼이 클릭 가능할 때까지 기다리기
                 user_logger.info('progress', f'기존 수강 메시지 감지됨 및 클릭 가능')
