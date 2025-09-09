@@ -231,6 +231,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
                 user_logger.info('progress', f'기존 수강 메시지 감지됨 및 클릭 가능')
                 driver.find_element(By.CSS_SELECTOR, "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn").click()
             except Exception as e:
+                user_logger.info('progress', f'기존 수강 메시지 감지안됨')
                 pass # 확인 버튼이 없으면 그냥 넘어감
             # 이전 iframe으로 돌아가기
             driver.switch_to.default_content()
