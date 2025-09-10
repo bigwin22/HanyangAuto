@@ -6,6 +6,7 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - PORT=${PORT}
+      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
     
     volumes:
       - ./data:/app/data
