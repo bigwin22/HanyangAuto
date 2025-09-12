@@ -43,6 +43,7 @@ jobs:
             export DOMAIN=hanyang.newme.dev
             export CONTAINER_NAME=hanyangauto
             export PORT=8000
+            export COMPOSE_PROJECT_NAME=hanyangauto
 
             # 프로젝트 디렉토리가 존재하는지 확인
             if [ -d "$PROJECT_PATH" ]; then

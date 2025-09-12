@@ -67,6 +67,7 @@ jobs:
             export DOMAIN=dev-hanyang.newme.dev
             export CONTAINER_NAME=hanyangauto-dev
             export PORT=8001
+            export COMPOSE_PROJECT_NAME=hanyangauto-dev
 
             #########################
             # [reset] 플래그가 있는 경우 도커 이미지와 컨테이너를 모두 정리
