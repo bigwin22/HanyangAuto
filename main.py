@@ -318,15 +318,14 @@ def check_admin_auth(request: Request):
         raise HTTPException(status_code=401, detail="로그인 필요")
     return {"success": True}
 
-# 개발용 엔드포인트 비활성화
-# @app.get("/api/user/me")
-# def user_me():
-#     # 실제 서비스에서는 세션/토큰 등 인증 필요
-#     # 예시: 첫 번째 유저 반환
-#     user = db.get_all_users()[0] if db.get_all_users() else None
-#     if not user:
-#         return JSONResponse(status_code=404, content={"message": "사용자 없음"})
-#     return {"userId": user[1]}
+@app.get("/api/user/me")
+def user_me():
+    # 실제 서비스에서는 세션/토큰 등 인증 필요
+    # 예시: 첫 번째 유저 반환
+    user = db.get_all_users()[0] if db.get_all_users() else None
+    if not user:
+        return JSONResponse(status_code=404, content={"message": "사용자 없음"})
+    return {"userId": user[1]}
 
 @app.delete("/api/admin/user/{user_id}", dependencies=[Depends(get_current_admin)])
 def delete_user(user_id: int = Path(...)):
