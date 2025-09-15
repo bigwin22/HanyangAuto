@@ -93,4 +93,4 @@ USER app
 EXPOSE 8000 8001
 
 # Xvfb를 시작하고 애플리케이션 실행
-CMD ["sh", "-c", "/app/monitor.sh uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WORKERS:-2}"]
+CMD ["sh", "-c", "/app/monitor.sh uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
