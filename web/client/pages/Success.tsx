@@ -12,20 +12,10 @@ export default function Success() {
     if (location.state?.userId) {
       setUserId(location.state.userId);
     } else {
-      // 세션에서 일회성으로 사용자 정보 조회
-      fetch("/api/user/me")
-        .then(res => res.json())
-        .then(data => {
-          if (data.userId) {
-            setUserId(data.userId);
-          }
-        })
-        .catch(() => {
-          // API 호출 실패 시 빈 문자열로 설정
-          setUserId("");
-        });
+      // state가 없으면 메인 페이지로 리다이렉트
+      navigate("/");
     }
-  }, [location.state]);
+  }, [location.state, navigate]);
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#87CEEB] to-[#4682B4] flex items-center justify-center p-4">

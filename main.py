@@ -272,7 +272,7 @@ def get_admin_users():
     return users
 
 @app.post("/api/user/login")
-def user_login(req: UserLoginRequest, request: Request):
+def user_login(req: UserLoginRequest):
     logger = HanyangLogger('system')
     user_logger = HanyangLogger('user', user_id=req.userId)
     user = db.get_user_by_id(req.userId)
@@ -295,9 +295,6 @@ def user_login(req: UserLoginRequest, request: Request):
         logger.info('automation', f'자동화 준비 시작: {req.userId}')
         user_logger.info('automation', '자동화 준비 시작')
         schedule_user_automation(req.userId, req.password)
-    
-    # 세션에 사용자 ID 저장 (일회성 사용을 위해)
-    request.session["user_id"] = req.userId
     return {"success": True, "userId": req.userId}
 
 @app.post("/api/admin/login")
@@ -321,16 +318,7 @@ def check_admin_auth(request: Request):
         raise HTTPException(status_code=401, detail="로그인 필요")
     return {"success": True}
 
-@app.get("/api/user/me")
-def user_me(request: Request):
-    # 세션에서 사용자 정보 조회 (일회성)
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return JSONResponse(status_code=404, content={"message": "사용자 없음"})
-    
-    # 일회성으로 세션에서 제거
-    request.session.pop("user_id", None)
-    return {"userId": user_id}
+# /api/user/me 엔드포인트 제거 - Success 페이지에서 location.state 사용
 
 @app.delete("/api/admin/user/{user_id}", dependencies=[Depends(get_current_admin)])
 def delete_user(user_id: int = Path(...)):
