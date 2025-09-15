@@ -20,7 +20,11 @@ from typing import Dict
  
 
 
-app = FastAPI()
+app = FastAPI(
+    docs_url=None,  # /docs 비활성화
+    redoc_url=None,  # /redoc 비활성화
+    openapi_url=None  # /openapi.json 비활성화
+)
 db.init_db()
 
 # 세션 미들웨어 추가 (유지시간 5분). 환경변수 우선 사용
@@ -314,14 +318,15 @@ def check_admin_auth(request: Request):
         raise HTTPException(status_code=401, detail="로그인 필요")
     return {"success": True}
 
-@app.get("/api/user/me")
-def user_me():
-    # 실제 서비스에서는 세션/토큰 등 인증 필요
-    # 예시: 첫 번째 유저 반환
-    user = db.get_all_users()[0] if db.get_all_users() else None
-    if not user:
-        return JSONResponse(status_code=404, content={"message": "사용자 없음"})
-    return {"userId": user[1]}
+# 개발용 엔드포인트 비활성화
+# @app.get("/api/user/me")
+# def user_me():
+#     # 실제 서비스에서는 세션/토큰 등 인증 필요
+#     # 예시: 첫 번째 유저 반환
+#     user = db.get_all_users()[0] if db.get_all_users() else None
+#     if not user:
+#         return JSONResponse(status_code=404, content={"message": "사용자 없음"})
+#     return {"userId": user[1]}
 
 @app.delete("/api/admin/user/{user_id}", dependencies=[Depends(get_current_admin)])
 def delete_user(user_id: int = Path(...)):
@@ -378,7 +383,6 @@ def admin_change_password(req: AdminChangePasswordRequest, request: Request):
     db.update_admin_pwd(admin[1], req.newPassword)
     return {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
 
-# 스케줄러 잡 조회용 (관리자)
 @app.get("/api/admin/scheduler/jobs", dependencies=[Depends(get_current_admin)])
 def get_scheduler_jobs():
     try:
