@@ -164,44 +164,17 @@ def db_add_learned(user_id, lecture_id):
         db.add_learned_lecture(user[0], lecture_id)
 
 # 유저 자동화 실행 (비동기)
-# 전역 동시성 제한: 환경변수 AUTOMATION_MAX_WORKERS (기본 5)
-automation_executor = ThreadPoolExecutor(max_workers=int(os.getenv("AUTOMATION_MAX_WORKERS", "5")))
-
-# 프로세스 간 유저별 중복 실행 방지용 파일 락
-user_lock_fds: Dict[str, int] = {}
-
-def _try_acquire_user_file_lock(user_id: str) -> bool:
-    lock_path = f"/tmp/hanyangauto_user_{user_id}.lock"
-    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        user_lock_fds[user_id] = fd
-        return True
-    except Exception:
-        try:
-            os.close(fd)
-        except Exception:
-            pass
-        return False
-
-def _release_user_file_lock(user_id: str):
-    fd = user_lock_fds.pop(user_id, None)
-    if fd is not None:
-        try:
-            os.close(fd)
-        except Exception:
-            pass
+# 전역 동시성 제한: 환경변수 AUTOMATION_MAX_WORKERS (기본 10으로 증가)
+automation_executor = ThreadPoolExecutor(max_workers=int(os.getenv("AUTOMATION_MAX_WORKERS", "10")))
 
 def schedule_user_automation(user_id: str, pwd: str):
     logger = HanyangLogger('system')
-    if not _try_acquire_user_file_lock(user_id):
-        logger.info('automation', f'중복 실행 방지로 {user_id} 작업 건너뜀')
-        return
+    logger.info('automation', f'{user_id} 자동화 작업 시작')
     def _task():
         try:
             run_automation_for_user(user_id, pwd)
         finally:
-            _release_user_file_lock(user_id)
+            pass  # 파일 락 제거로 인한 락 해제 로직 불필요
     automation_executor.submit(_task)
 def run_automation_for_user(user_id, pwd):
     system_logger = HanyangLogger('system')
