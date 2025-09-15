@@ -8,14 +8,22 @@ export default function Success() {
   const [userId, setUserId] = useState("");
 
   useEffect(() => {
-    // 실제로는 location.state가 아니라, 필요시 API에서 사용자 정보 조회
+    // location.state에서 사용자 ID 가져오기 (일회성)
     if (location.state?.userId) {
       setUserId(location.state.userId);
     } else {
-      // 예시: /api/user/me 등에서 정보 조회
+      // 세션에서 일회성으로 사용자 정보 조회
       fetch("/api/user/me")
         .then(res => res.json())
-        .then(data => setUserId(data.userId || ""));
+        .then(data => {
+          if (data.userId) {
+            setUserId(data.userId);
+          }
+        })
+        .catch(() => {
+          // API 호출 실패 시 빈 문자열로 설정
+          setUserId("");
+        });
     }
   }, [location.state]);
 

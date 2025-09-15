@@ -272,7 +272,7 @@ def get_admin_users():
     return users
 
 @app.post("/api/user/login")
-def user_login(req: UserLoginRequest):
+def user_login(req: UserLoginRequest, request: Request):
     logger = HanyangLogger('system')
     user_logger = HanyangLogger('user', user_id=req.userId)
     user = db.get_user_by_id(req.userId)
@@ -295,6 +295,9 @@ def user_login(req: UserLoginRequest):
         logger.info('automation', f'자동화 준비 시작: {req.userId}')
         user_logger.info('automation', '자동화 준비 시작')
         schedule_user_automation(req.userId, req.password)
+    
+    # 세션에 사용자 ID 저장 (일회성 사용을 위해)
+    request.session["user_id"] = req.userId
     return {"success": True, "userId": req.userId}
 
 @app.post("/api/admin/login")
@@ -319,13 +322,15 @@ def check_admin_auth(request: Request):
     return {"success": True}
 
 @app.get("/api/user/me")
-def user_me():
-    # 실제 서비스에서는 세션/토큰 등 인증 필요
-    # 예시: 첫 번째 유저 반환
-    user = db.get_all_users()[0] if db.get_all_users() else None
-    if not user:
+def user_me(request: Request):
+    # 세션에서 사용자 정보 조회 (일회성)
+    user_id = request.session.get("user_id")
+    if not user_id:
         return JSONResponse(status_code=404, content={"message": "사용자 없음"})
-    return {"userId": user[1]}
+    
+    # 일회성으로 세션에서 제거
+    request.session.pop("user_id", None)
+    return {"userId": user_id}
 
 @app.delete("/api/admin/user/{user_id}", dependencies=[Depends(get_current_admin)])
 def delete_user(user_id: int = Path(...)):
