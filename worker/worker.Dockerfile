@@ -1,14 +1,7 @@
-FROM node:18-slim as builder
-
-WORKDIR /app/web
-
-COPY web/package.json web/package-lock.json ./
-COPY web/ ./
-
-RUN npm install
-RUN npm run build
-
 FROM python:3.12-slim
+
+# 상위 폴더의 .dockerignore 파일을 사용하므로 별도의 .dockerignore 파일을 worker 디렉토리에 두지 않습니다.
+
 
 WORKDIR /app
 
@@ -63,12 +56,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 애플리케이션 코드 복사
-COPY main.py .
 COPY automation.py .
 COPY utils/ ./utils/
 
-# 빌드된 프론트엔드 파일 복사
-COPY --from=builder /app/web/dist/spa /app/web/dist/spa
 
 # 애플리케이션을 비루트 사용자로 실행하도록 설정합니다.
 RUN groupadd -g 1000 app \
@@ -89,8 +79,3 @@ ENV DISPLAY=:99
 
 USER app
 
-# Informational expose; actual runtime port is controlled by $PORT
-EXPOSE 8000 8001
-
-# Xvfb를 시작하고 애플리케이션 실행
-CMD ["sh", "-c", "/app/monitor.sh uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
