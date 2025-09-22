@@ -1,26 +1,46 @@
 services:
-  hanyang-automation:
-    image: ${DOCKER_IMAGE} # 사용할 이미지를 명시적으로 지정
-    container_name: ${CONTAINER_NAME}
+  front:
+    build:
+      dockerfile: front.Dockerfile
+    container_name: ${CONTAINER_NAME:-hanyang-front}
     restart: always
     user: "${UID:-1000}:${GID:-1000}"
     environment:
-      - PORT=${PORT}
-      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
-    
+      - PORT=${PORT:-8000}
+      - BACK_PORT=${BACK_PORT:-8001}
+      - DOMAIN=${DOMAIN}
     volumes:
       - ./data:/app/data
-      - ./logs:/app/logs  
-    networks:
-      - traefik-net
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${CONTAINER_NAME}.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.${CONTAINER_NAME}.entrypoints=web,websecure"
-      - "traefik.http.routers.${CONTAINER_NAME}.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.${CONTAINER_NAME}.service=${CONTAINER_NAME}"
-      - "traefik.http.services.${CONTAINER_NAME}.loadbalancer.server.port=${PORT}"
+      - ./logs:/app/logs
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
 
-networks:
-  traefik-net:
-    external: true
+  back:
+    build:
+      dockerfile: back.Dockerfile
+    container_name: ${BACK_CONTAINER_NAME:-hanyang-back}
+    restart: always
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - PORT=${BACK_PORT:-8001}
+      - DB_ENCRYPTION_KEY_B64=8SLlsBNPASoHEokCEb7eJUtqjpxXShhr
+      - SESSION_SECRET_B64=${SESSION_SECRET_B64}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    network_mode: "service:front"
+    depends_on:
+      - front
+
+  worker:
+    build:
+      dockerfile: worker.Dockerfile
+    container_name: ${WORKER_CONTAINER_NAME:-hanyang-worker}
+    restart: always
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - DISPLAY=:99
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs

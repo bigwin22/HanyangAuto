@@ -24,7 +24,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-app.add_middleware(SecurityHeadersMiddleware)
+# app.add_middleware(SecurityHeadersMiddleware)
 
 
 # Path to the built React app
@@ -33,39 +33,6 @@ ASSETS_DIST = os.path.join(SPA_DIST, 'assets')
 
 # Serve static assets (JS, CSS, images)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIST), name="assets")
-
-
-# Static files
-@app.get("/favicon.ico")
-def favicon():
-    favicon_path = os.path.join(SPA_DIST, "favicon.ico")
-    if os.path.exists(favicon_path):
-        return FileResponse(favicon_path)
-    raise HTTPException(status_code=404, detail="Favicon not found")
-
-
-@app.get("/robots.txt")
-def robots():
-    robots_path = os.path.join(SPA_DIST, "robots.txt")
-    if os.path.exists(robots_path):
-        return FileResponse(robots_path)
-    raise HTTPException(status_code=404, detail="robots.txt not found")
-
-
-@app.get("/placeholder.svg")
-def placeholder():
-    svg_path = os.path.join(SPA_DIST, "placeholder.svg")
-    if os.path.exists(svg_path):
-        return FileResponse(svg_path)
-    raise HTTPException(status_code=404, detail="placeholder.svg not found")
-
-
-@app.get("/hanyang_logo.png")
-def hanyang_logo():
-    logo_path = os.path.join(SPA_DIST, "hanyang_logo.png")
-    if os.path.exists(logo_path):
-        return FileResponse(logo_path)
-    raise HTTPException(status_code=404, detail="hanyang_logo.png not found")
 
 
 # Allowed frontend routes (SPA)
@@ -95,6 +62,7 @@ def serve_spa(request: Request):
 # Catch-all for all other routes: return SPA index or 404 for api/*
 @app.get("/{full_path:path}", response_class=HTMLResponse)
 def catch_all(full_path: str):
+    print(f"Catch-all received path: {full_path}")  # Add this line for debugging
     # API 경로는 404 반환 (이 서버는 API를 제공하지 않음)
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Page not found")
@@ -103,4 +71,3 @@ def catch_all(full_path: str):
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="index.html not found")
-

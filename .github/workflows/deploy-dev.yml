@@ -3,7 +3,9 @@ name: Build and Deploy to Development Server
 on:
   push:
     branches:
-      - dev
+      - '*'  # 메인(main, master)을 제외한 모든 브랜치에서 동작하도록 설정
+      - '!main'
+      - '!master'
 
 jobs:
   build-and-deploy:
@@ -58,13 +60,13 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            PROJECT_PATH="/home/kth88/services/development/HanyangAuto"
-            DEPLOY_DIR="/home/kth88/services/development/"
+            PROJECT_PATH="/home/kth88/services/HanyangAuto"
+            DEPLOY_DIR="/home/kth88/services/HanyangAuto/dev"
 
             # Docker 이미지 및 환경 변수 설정
             export PROJECT_DIR="$PROJECT_PATH"
             export DOCKER_IMAGE="${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:dev"
-            export DOMAIN=dev-hanyang.newme.dev
+            export DOMAIN=micro-hanyang.newme.dev
             export CONTAINER_NAME=hanyangauto-dev
             export PORT=8001
             export COMPOSE_PROJECT_NAME=hanyangauto-dev
@@ -77,7 +79,7 @@ jobs:
               # 실행 중인 컨테이너 중지 및 제거
               docker stop $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 중지되었거나 존재하지 않습니다."
               docker rm $CONTAINER_NAME 2>/dev/null || echo "컨테이너가 이미 제거되었거나 존재하지 않습니다."
-              # 도커 dev 태그 이미지만 제거
+              # 도커 micro 태그 이미지만 제거
               docker rmi $DOCKER_IMAGE 2>/dev/null || echo "이미지가 이미 제거되었거나 존재하지 않습니다."
               # 사용하지 않는 도커 리소스 정리
               docker system prune -f
@@ -93,15 +95,15 @@ jobs:
             if [ -d "$PROJECT_PATH" ]; then
               echo "프로젝트 디렉토리가 존재합니다. git pull을 시도합니다."
               cd "$PROJECT_PATH"
-              git pull origin dev
+              git pull origin ${{ github.ref }}
             else
               echo "프로젝트 디렉토리가 존재하지 않습니다. gh repo clone을 시도합니다."
               cd "$DEPLOY_DIR"
               gh repo clone HanyangAuto
               cd "$PROJECT_PATH"
               # gh repo clone은 기본적으로 main 브랜치로 클론하므로, dev 브랜치로 체크아웃 후 pull
-              git checkout dev || git checkout -b dev origin/dev
-              git pull origin dev
+              git checkout ${{ github.ref }}|| git checkout -b ${{ github.ref }} origin/${{ github.ref }}
+              git pull origin ${{ github.ref }}
             fi
 
             # Docker Compose로 배포 재시작

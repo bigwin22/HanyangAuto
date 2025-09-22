@@ -62,9 +62,6 @@ export default function Dashboard() {
   const activeUsers = users.filter((user) => user.status === "active").length;
   const errorUsers = users.filter((user) => user.status === "error").length;
 
-  const navigateToMain = () => {
-    navigate("/");
-  };
 
   const navigateToChangePassword = () => {
     navigate("/admin/change-password");

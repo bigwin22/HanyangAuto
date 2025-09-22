@@ -4,13 +4,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import base64
 import os
-import utils.database as db
-import glob
-from utils.logger import HanyangLogger
-from utils.database import decrypt_password
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Dict
+import glob
+
+import sys
+import os
+
+# 상위 디렉토리를 sys.path에 추가
+sys.path.append(os.path.abspath(".."))
+from utils.logger import HanyangLogger
+from utils.database import decrypt_password
+import utils.database as db
+
 
 
 app = FastAPI(
