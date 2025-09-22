@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pycryptodome
+python-dotenv
+itsdangerous
+pydantic
+starlette
+python-multipart
