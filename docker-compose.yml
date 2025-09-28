@@ -1,25 +1,58 @@
 services:
-  hanyang-automation:
-    image: ${DOCKER_IMAGE} # 사용할 이미지를 명시적으로 지정
-    container_name: ${CONTAINER_NAME}
+  front:
+    build:
+      context: .
+      dockerfile: Front.Dockerfile
+    container_name: ${CONTAINER_NAME}-front
     restart: always
     user: "${UID:-1000}:${GID:-1000}"
-    environment:
-      - PORT=${PORT}
-      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
-    
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs  
     networks:
       - traefik-net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.${CONTAINER_NAME}.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.${CONTAINER_NAME}.entrypoints=web,websecure"
-      - "traefik.http.routers.${CONTAINER_NAME}.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.${CONTAINER_NAME}.service=${CONTAINER_NAME}"
-      - "traefik.http.services.${CONTAINER_NAME}.loadbalancer.server.port=${PORT}"
+      - "traefik.http.routers.${CONTAINER_NAME}-front.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.${CONTAINER_NAME}-front.entrypoints=web,websecure"
+      - "traefik.http.routers.${CONTAINER_NAME}-front.tls.certresolver=letsencrypt"
+      - "traefik.http.services.${CONTAINER_NAME}-front.loadbalancer.server.port=8000"
+
+  back:
+    build:
+      context: .
+      dockerfile: Back.Dockerfile
+    container_name: ${CONTAINER_NAME}-back
+    restart: always
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
+      - SESSION_SECRET_B64=${SESSION_SECRET_B64}
+      - AUTOMATION_SERVICE_URL=http://${CONTAINER_NAME}-auto:8002
+      - CORS_ALLOW_ORIGINS=https://${DOMAIN}}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${CONTAINER_NAME}-back.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.${CONTAINER_NAME}-back.entrypoints=web,websecure"
+      - "traefik.http.routers.${CONTAINER_NAME}-back.tls.certresolver=letsencrypt"
+      - "traefik.http.services.${CONTAINER_NAME}-back.loadbalancer.server.port=8001"
+
+  automation:
+    build:
+      context: .
+      dockerfile: Auto.Dockerfile
+    container_name: ${CONTAINER_NAME}-auto
+    restart: always
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - traefik-net
 
 networks:
   traefik-net:

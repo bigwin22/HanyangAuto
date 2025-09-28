@@ -1,8 +1,0 @@
-fastapi
-uvicorn
-apscheduler
-selenium
-chromedriver-autoinstaller
-pycryptodome
-python-dotenv
-itsdangerous
