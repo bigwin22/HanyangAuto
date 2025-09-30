@@ -6,17 +6,10 @@ from pydantic import BaseModel
 import base64
 import os
 import utils.database as db
-from automation import run_user_automation
-from apscheduler.schedulers.background import BackgroundScheduler
-from concurrent.futures import ThreadPoolExecutor
-import threading
-import glob
 from utils.logger import HanyangLogger
 from utils.database import decrypt_password
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-import fcntl
-from typing import Dict
  
 
 
@@ -158,76 +151,6 @@ def get_current_admin(request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return True
 
-def db_add_learned(user_id, lecture_id):
-    user = db.get_user_by_id(user_id)
-    if user:
-        db.add_learned_lecture(user[0], lecture_id)
-
-# 유저 자동화 실행 (비동기)
-# 전역 동시성 제한: 환경변수 AUTOMATION_MAX_WORKERS (기본 10으로 증가)
-automation_executor = ThreadPoolExecutor(max_workers=int(os.getenv("AUTOMATION_MAX_WORKERS", "10")))
-
-def schedule_user_automation(user_id: str, pwd: str):
-    logger = HanyangLogger('system')
-    logger.info('automation', f'{user_id} 자동화 작업 시작')
-    def _task():
-        try:
-            run_automation_for_user(user_id, pwd)
-        finally:
-            pass  # 파일 락 제거로 인한 락 해제 로직 불필요
-    automation_executor.submit(_task)
-def run_automation_for_user(user_id, pwd):
-    system_logger = HanyangLogger('system')
-    user_logger = HanyangLogger('user', user_id=str(user_id))
-    learned = db.get_learned_lectures(db.get_user_by_id(user_id)[0])
-    # DB에서 비밀번호 복호화
-    user = db.get_user_by_id(user_id)
-    if user:
-        pwd = decrypt_password(user[2])
-    system_logger.info('automation', f'자동화 시작: {user_id}')
-    user_logger.info('automation', '자동화 시작')
-    system_logger.info('automation', f'강의 목록 조회 시작: {user_id}')
-    result = run_user_automation(user_id, pwd, learned, db_add_learned)
-    if result['success']:
-        system_logger.info('automation', f'자동화 완료: {user_id} ({result["msg"]})')
-        user_logger.info('automation', f'자동화 완료: {result["msg"]}')
-    else:
-        system_logger.error('automation', f'자동화 실패: {user_id} ({result["msg"]})')
-        user_logger.error('automation', f'자동화 실패: {result["msg"]}')
-
-# 전체 유저 자동화 (병렬)
-def run_automation_for_all_users():
-    users = db.get_all_users()
-    for user in users:
-        # user[1] = ID, user[2] = PWD_Encrypted
-        schedule_user_automation(user[1], user[2])
-
-# APScheduler로 매일 7시, 서버 시작 시 자동화
-def _is_primary_process() -> bool:
-    fd = None
-    try:
-        lock_path = '/tmp/hanyangauto_scheduler.lock'
-        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        globals()['__primary_lock_fd'] = fd  # keep FD open
-        return True
-    except Exception:
-        if fd is not None:
-            try:
-                os.close(fd)
-            except Exception:
-                pass
-        return False
-
-if _is_primary_process():
-    scheduler = BackgroundScheduler(timezone='Asia/Seoul')
-    scheduler.add_job(run_automation_for_all_users, 'cron', hour=7, minute=0)
-    scheduler.start()
-    # 스케줄러 시작 로그
-    HanyangLogger('system').info('scheduler', 'APScheduler가 시작되었습니다. (Asia/Seoul)')
-    # 서버 시작 시 자동화 (초기 한 번)
-    threading.Thread(target=run_automation_for_all_users, daemon=True).start()
-
 # 서버 시작 시 로그 기록 (폴더 자동 생성)
 HanyangLogger('system').info('system', '서버가 시작되었습니다.')
 
@@ -256,18 +179,12 @@ def user_login(req: UserLoginRequest):
         user_logger.info('user', '신규 유저 등록')
         logger.info('user', f'유저 로그인: {req.userId}')
         user_logger.info('user', '유저 로그인')
-        logger.info('automation', f'자동화 준비 시작: {req.userId}')
-        user_logger.info('automation', '자동화 준비 시작')
-        schedule_user_automation(req.userId, req.password)
     else:
         db.update_user_pwd(req.userId, req.password)
         logger.info('user', f'기존 유저 비밀번호 업데이트: {req.userId}')
         user_logger.info('user', '기존 유저 비밀번호 업데이트')
         logger.info('user', f'유저 로그인: {req.userId}')
         user_logger.info('user', '유저 로그인')
-        logger.info('automation', f'자동화 준비 시작: {req.userId}')
-        user_logger.info('automation', '자동화 준비 시작')
-        schedule_user_automation(req.userId, req.password)
     return {"success": True, "userId": req.userId}
 
 @app.post("/api/admin/login")
@@ -301,21 +218,6 @@ def delete_user(user_id: int = Path(...)):
     logger.info('user', f'유저 삭제: {user_id}')
     return {"success": True, "deleted": user_id}
 
-@app.get("/api/admin/user/{userId}/logs", dependencies=[Depends(get_current_admin)])
-def get_user_logs(userId: str):
-    from datetime import datetime
-    logs_base = os.path.join(os.path.dirname(__file__), 'logs')
-    today = datetime.now().strftime('%Y%m%d')
-    user_log_dir = os.path.join(logs_base, today, 'user', str(userId))
-    if not os.path.exists(user_log_dir):
-        return PlainTextResponse("로그 파일 없음", status_code=404)
-    log_files = sorted(glob.glob(os.path.join(user_log_dir, 'log*.log')))
-    if not log_files:
-        return PlainTextResponse("로그 파일 없음", status_code=404)
-    with open(log_files[-1], encoding='utf-8') as f:
-        content = f.read()
-    return PlainTextResponse(content)
-
 # Catch-all for all other routes: return 404
 @app.get("/{full_path:path}", response_class=HTMLResponse)
 def catch_all(full_path: str):
@@ -347,21 +249,3 @@ def admin_change_password(req: AdminChangePasswordRequest, request: Request):
         )
     db.update_admin_pwd(admin[1], req.newPassword)
     return {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
-
-@app.get("/api/admin/scheduler/jobs", dependencies=[Depends(get_current_admin)])
-def get_scheduler_jobs():
-    try:
-        jobs = []
-        for job in scheduler.get_jobs():
-            jobs.append({
-                "id": job.id,
-                "name": job.name,
-                "trigger": str(job.trigger),
-                "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
-            })
-        return {"success": True, "jobs": jobs}
-    except NameError:
-        return {"success": False, "message": "스케줄러가 초기화되지 않았습니다."}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"success": False, "message": str(e)})
-
