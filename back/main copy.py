@@ -16,17 +16,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 app = FastAPI()
 db.init_db()
 
-def __init__():
-    # data 폴더에 '암호화 키.key'가 없다면 base64로 인코딩된 32비트 난수 키를 생성
-    key_file_path = os.path.join(os.path.dirname(__file__), '..', 'data', '암호화 키.key')
-    if not os.path.exists(key_file_path):
-        os.makedirs(os.path.dirname(key_file_path), exist_ok=True)
-        random_key = os.urandom(32)
-        b64_key = base64.b64encode(random_key)
-        with open(key_file_path, 'wb') as f:
-            f.write(b64_key)
-__init__()
-
 SESSION_KEY_FILE_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'session_key.key')
 def load_or_generate_session_key():
     env_session_b64 = os.getenv("SESSION_SECRET_B64")
@@ -80,6 +69,7 @@ app.add_middleware(
 class UserLoginRequest(BaseModel):
     userId: str
     password: str
+
 class AdminLoginRequest(BaseModel):
     adminId: str
     adminPassword: str
@@ -88,6 +78,8 @@ def get_current_admin(request: Request):
     if not request.session.get("admin_logged_in"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     return True
+
+HanyangLogger('system').info('system', '서버가 시작되었습니다.')
 
 @app.get("/api/admin/users", dependencies=[Depends(get_current_admin)])
 def get_admin_users():
@@ -143,8 +135,10 @@ def check_admin_auth(request: Request):
 
 @app.delete("/api/admin/user/{user_id}", dependencies=[Depends(get_current_admin)])
 def delete_user(user_id: int = Path(...)):
+    logger = HanyangLogger('system')
     db.delete_learned_lectures(user_id)
     db.delete_user_by_num(user_id)
+    logger.info('user', f'유저 삭제: {user_id}')
     return {"success": True, "deleted": user_id}
 
 @app.post("/api/admin/logout")

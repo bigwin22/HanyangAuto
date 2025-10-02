@@ -63,8 +63,16 @@ def load_or_generate_key():
                 return load_or_generate_key()
             except:
                 raise ValueError(f"Invalid DB_ENCRYPTION_KEY_B64: {e}")
-
-    return key
+    else:
+        os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)
+        random_key = os.urandom(32)
+        b64_key = base64.b64encode(random_key)
+        with open(KEY_FILE_PATH, 'wb') as f:
+            f.write(b64_key)
+        with open(KEY_FILE_PATH, 'rb') as f:
+            file_key = f.read()
+        os.environ["DB_ENCRYPTION_KEY_B64"] = base64.b64encode(file_key).decode('utf-8')
+        return load_or_generate_key()
 
 SECRET_KEY = load_or_generate_key()
 

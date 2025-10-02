@@ -1,26 +1,41 @@
+version: '3.8'
+
 services:
-  hanyang-automation:
-    image: ${DOCKER_IMAGE} # 사용할 이미지를 명시적으로 지정
-    container_name: ${CONTAINER_NAME}
+  front:
+    build:
+      context: .
+      dockerfile: front.Dockerfile
+    container_name: ${CONTAINER_NAME}_front
     restart: always
-    user: "${UID:-1000}:${GID:-1000}"
-    environment:
-      - PORT=${PORT}
-      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
-    
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs  
     networks:
+      - hanyang-net
       - traefik-net
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.${CONTAINER_NAME}.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.${CONTAINER_NAME}.entrypoints=web,websecure"
       - "traefik.http.routers.${CONTAINER_NAME}.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.${CONTAINER_NAME}.service=${CONTAINER_NAME}"
-      - "traefik.http.services.${CONTAINER_NAME}.loadbalancer.server.port=${PORT}"
+      - "traefik.http.services.${CONTAINER_NAME}.loadbalancer.server.port=8080"
+    depends_on:
+      - back
+
+  back:
+    build:
+      context: .
+      dockerfile: back.Dockerfile
+    container_name: ${CONTAINER_NAME}_back
+    restart: always
+    environment:
+      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - hanyang-net
+    user: "1000:1000"
 
 networks:
+  hanyang-net:
+    driver: bridge
   traefik-net:
     external: true
