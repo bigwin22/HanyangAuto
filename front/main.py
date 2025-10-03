@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 import json
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 app = FastAPI(
     docs_url=None,
@@ -21,7 +21,7 @@ ASSETS_DIST = os.path.join(SPA_DIST, 'assets')
 if os.path.exists(ASSETS_DIST):
     app.mount("/assets", StaticFiles(directory=ASSETS_DIST), name="assets")
 
-BACKEND_URL = "localhost:9000"
+BACKEND_URL = "back:9000"
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "DELETE"])
 async def proxy_api(request: Request, path: str):

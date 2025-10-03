@@ -50,28 +50,30 @@ def load_or_generate_key():
                 raise ValueError("DB_ENCRYPTION_KEY_B64 must decode to 16/24/32 bytes")
             return key
         except Exception as e:
-            try:
-                # 파일 보관 키 사용(없으면 생성)
-                os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)# 기본은 32바이트 키(AES-256)
-                key = os.urandom(32)
-                with open(KEY_FILE_PATH, 'wb') as f:
-                    f.write(key)
-                # 파일에서 키를 읽어 환경변수로 설정
-                with open(KEY_FILE_PATH, 'rb') as f:
-                    file_key = f.read()
-                os.environ["DB_ENCRYPTION_KEY_B64"] = base64.b64encode(file_key).decode('utf-8')
-                return load_or_generate_key()
-            except:
-                raise ValueError(f"Invalid DB_ENCRYPTION_KEY_B64: {e}")
+            # try:
+            #     # 파일 보관 키 사용(없으면 생성)
+            #     os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)# 기본은 32바이트 키(AES-256)
+            #     key = os.urandom(32)
+            #     with open(KEY_FILE_PATH, 'wb') as f:
+            #         f.write(key)
+            #     # 파일에서 키를 읽어 환경변수로 설정
+            #     with open(KEY_FILE_PATH, 'rb') as f:
+            #         file_key = f.read()
+            #     os.environ["DB_ENCRYPTION_KEY_B64"] = base64.b64encode(file_key).decode('utf-8')
+            #     return load_or_generate_key()
+            # except:
+                # raise ValueError(f"Invalid DB_ENCRYPTION_KEY_B64: {e}")
+            raise ValueError(f"Invalid DB_ENCRYPTION_KEY_B64: {e}. Please set DB_ENCRYPTION_KEY_B64 in the environment variables by using the start.sh script.")
     else:
-        os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)
-        random_key = os.urandom(32)
-        b64_key = base64.b64encode(random_key)
-        with open(KEY_FILE_PATH, 'wb') as f:
-            f.write(b64_key)
-        with open(KEY_FILE_PATH, 'rb') as f:
-            file_key = f.read()
-        os.environ["DB_ENCRYPTION_KEY_B64"] = base64.b64encode(file_key).decode('utf-8')
+        # os.makedirs(os.path.dirname(KEY_FILE_PATH), exist_ok=True)
+        # random_key = os.urandom(32)
+        # b64_key = base64.b64encode(random_key)
+        # with open(KEY_FILE_PATH, 'wb') as f:
+        #     f.write(b64_key)
+        # with open(KEY_FILE_PATH, 'rb') as f:
+        #     file_key = f.read()
+        # os.environ["DB_ENCRYPTION_KEY_B64"] = base64.b64encode(file_key).decode('utf-8')
+        raise ValueError("DB_ENCRYPTION_KEY_B64 is not set. Please set DB_ENCRYPTION_KEY_B64 in the environment variables by using the start.sh script.")
         return load_or_generate_key()
 
 SECRET_KEY = load_or_generate_key()

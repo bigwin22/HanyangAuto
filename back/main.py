@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import base64
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import utils.database as db
 from utils.logger import HanyangLogger
 from utils.database import decrypt_password
@@ -27,7 +27,7 @@ db.init_db()
 #             f.write(b64_key)
 # __init__()
 
-SESSION_KEY_FILE_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'session_key.key')
+SESSION_KEY_FILE_PATH = os.path.join(os.path.dirname(__file__),'data', 'session_key.key')
 def load_or_generate_session_key():
     env_session_b64 = os.getenv("SESSION_SECRET_B64")
     if env_session_b64:
@@ -165,4 +165,5 @@ def admin_change_password(req: AdminChangePasswordRequest, request: Request):
             detail="현재 비밀번호가 일치하지 않습니다.",
         )
     db.update_admin_pwd(admin[1], req.newPassword)
+    request.session["admin_logged_in"] = None
     return {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}

@@ -1,0 +1,1 @@
+openssl rand -base64 32 | head -c 32 | base64 > "./data/암호화 키.key"

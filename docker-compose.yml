@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   front:
@@ -8,16 +7,11 @@ services:
     container_name: ${CONTAINER_NAME}_front
     restart: always
     networks:
-      - hanyang-net
-      - traefik-net
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${CONTAINER_NAME}.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.${CONTAINER_NAME}.entrypoints=web,websecure"
-      - "traefik.http.routers.${CONTAINER_NAME}.tls.certresolver=letsencrypt"
-      - "traefik.http.services.${CONTAINER_NAME}.loadbalancer.server.port=8080"
+      - hanyang-net   
     depends_on:
       - back
+    ports:
+      - 8000:8000
 
   back:
     build:
@@ -33,9 +27,9 @@ services:
     networks:
       - hanyang-net
     user: "1000:1000"
+    expose:
+      - "9000"
 
 networks:
   hanyang-net:
     driver: bridge
-  traefik-net:
-    external: true
