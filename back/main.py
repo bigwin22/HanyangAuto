@@ -16,16 +16,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 app = FastAPI()
 db.init_db()
 
-def __init__():
-    # data 폴더에 '암호화 키.key'가 없다면 base64로 인코딩된 32비트 난수 키를 생성
-    key_file_path = os.path.join(os.path.dirname(__file__), '..', 'data', '암호화 키.key')
-    if not os.path.exists(key_file_path):
-        os.makedirs(os.path.dirname(key_file_path), exist_ok=True)
-        random_key = os.urandom(32)
-        b64_key = base64.b64encode(random_key)
-        with open(key_file_path, 'wb') as f:
-            f.write(b64_key)
-__init__()
+# def __init__():
+#     # data 폴더에 '암호화 키.key'가 없다면 base64로 인코딩된 32비트 난수 키를 생성
+#     key_file_path = os.path.join(os.path.dirname(__file__), '..', 'data', '암호화 키.key')
+#     if not os.path.exists(key_file_path):
+#         os.makedirs(os.path.dirname(key_file_path), exist_ok=True)
+#         random_key = os.urandom(32)
+#         b64_key = base64.b64encode(random_key)
+#         with open(key_file_path, 'wb') as f:
+#             f.write(b64_key)
+# __init__()
 
 SESSION_KEY_FILE_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'session_key.key')
 def load_or_generate_session_key():
