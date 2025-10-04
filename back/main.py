@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import base64
+import httpx
 
 # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import utils.database as db
@@ -63,6 +64,30 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Receive server URL for automation triggers
+RECEIVE_SERVER_URL = os.getenv("RECEIVE_SERVER_URL", "http://automation:7000")
+
+async def trigger_user_automation(user_id: str):
+    """
+    Trigger automation for a user by calling the receive_server.
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{RECEIVE_SERVER_URL}/on-user-registered",
+                json={"userId": user_id},
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                logger = HanyangLogger('system')
+                logger.info('automation', f'Successfully triggered automation for user: {user_id}')
+            else:
+                logger = HanyangLogger('system')
+                logger.error('automation', f'Failed to trigger automation for user {user_id}: {response.status_code}')
+    except Exception as e:
+        logger = HanyangLogger('system')
+        logger.error('automation', f'Error triggering automation for user {user_id}: {e}')
+
 cors_origins = os.getenv("CORS_ALLOW_ORIGINS")
 if cors_origins:
     allow_origins = [o.strip() for o in cors_origins.split(',') if o.strip()]
@@ -103,23 +128,29 @@ def get_admin_users():
     return users
 
 @app.post("/api/user/login")
-def user_login(req: UserLoginRequest):
+async def user_login(req: UserLoginRequest):
     logger = HanyangLogger('system')
     user_logger = HanyangLogger('user', user_id=req.userId)
     user = db.get_user_by_id(req.userId)
+    is_new_user = False
+    
     if not user:
         db.add_user(req.userId, req.password)
         user = db.get_user_by_id(req.userId)
         logger.info('user', f'신규 유저 등록: {req.userId}')
         user_logger.info('user', '신규 유저 등록')
-        logger.info('user', f'유저 로그인: {req.userId}')
-        user_logger.info('user', '유저 로그인')
+        is_new_user = True
     else:
         db.update_user_pwd(req.userId, req.password)
         logger.info('user', f'기존 유저 비밀번호 업데이트: {req.userId}')
         user_logger.info('user', '기존 유저 비밀번호 업데이트')
-        logger.info('user', f'유저 로그인: {req.userId}')
-        user_logger.info('user', '유저 로그인')
+    
+    logger.info('user', f'유저 로그인: {req.userId}')
+    user_logger.info('user', '유저 로그인')
+    
+    # Trigger automation for the user (both new and existing users)
+    await trigger_user_automation(req.userId)
+    
     return {"success": True, "userId": req.userId}
 
 @app.post("/api/admin/login")

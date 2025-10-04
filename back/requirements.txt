@@ -3,3 +3,4 @@ uvicorn
 pycryptodome
 python-dotenv
 itsdangerous
+httpx

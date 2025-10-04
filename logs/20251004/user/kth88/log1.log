@@ -1,0 +1,21 @@
+[2025-10-04 16:11:28][user][INFO] 신규 유저 등록
+[2025-10-04 16:11:28][user][INFO] 유저 로그인
+[2025-10-04 16:32:02][user][INFO] 기존 유저 비밀번호 업데이트
+[2025-10-04 16:32:02][user][INFO] 유저 로그인
+[2025-10-04 16:33:39][user][INFO] 기존 유저 비밀번호 업데이트
+[2025-10-04 16:33:39][user][INFO] 유저 로그인
+[2025-10-04 16:34:06][user][INFO] 기존 유저 비밀번호 업데이트
+[2025-10-04 16:34:06][user][INFO] 유저 로그인
+[2025-10-04 16:34:06][automation][INFO] Automation task started (UserNum: 1)
+[2025-10-04 16:34:06][automation][ERROR] 드라이버 초기화 실패: Message: Service /usr/bin/chromedriver unexpectedly exited. Status code was: -5
+
+[2025-10-04 16:35:40][user][INFO] 기존 유저 비밀번호 업데이트
+[2025-10-04 16:35:40][user][INFO] 유저 로그인
+[2025-10-04 16:35:40][automation][INFO] Automation task started (UserNum: 1)
+[2025-10-04 16:35:40][automation][ERROR] 드라이버 초기화 실패: Message: Service /usr/bin/chromedriver unexpectedly exited. Status code was: -5
+
+[2025-10-04 16:37:45][user][INFO] 기존 유저 비밀번호 업데이트
+[2025-10-04 16:37:45][user][INFO] 유저 로그인
+[2025-10-04 16:37:45][automation][INFO] Automation task started (UserNum: 1)
+[2025-10-04 16:37:45][automation][ERROR] 드라이버 초기화 실패: Message: Service /usr/bin/chromedriver unexpectedly exited. Status code was: -5
+

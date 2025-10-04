@@ -13,6 +13,25 @@ services:
     ports:
       - 8000:8000
 
+  automation:
+    build:
+      context: .
+      dockerfile: automation.Dockerfile
+    container_name: ${CONTAINER_NAME}_automation
+    environment:
+      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
+    restart: always
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - hanyang-net
+    depends_on:
+      - back
+    user: "1000:1000"
+    expose:
+      - "7000"
+
   back:
     build:
       context: .

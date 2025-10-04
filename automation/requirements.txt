@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+apscheduler
+pycryptodome
+python-dotenv
+selenium
