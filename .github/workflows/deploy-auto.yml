@@ -50,6 +50,7 @@ jobs:
 
       - name: Build and push Frontend image
         if: steps.check-commit.outputs.skip == 'false'
+        id: build-frontend
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -57,9 +58,11 @@ jobs:
           push: true
           tags: ${{ steps.vars.outputs.docker_image }}-front
           cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-front
+          platforms: linux/amd64
 
       - name: Build and push Backend image
         if: steps.check-commit.outputs.skip == 'false'
+        id: build-backend
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -67,9 +70,11 @@ jobs:
           push: true
           tags: ${{ steps.vars.outputs.docker_image }}-back
           cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-back
+          platforms: linux/amd64
 
       - name: Build and push Automation image
         if: steps.check-commit.outputs.skip == 'false'
+        id: build-automation
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -77,9 +82,28 @@ jobs:
           push: true
           tags: ${{ steps.vars.outputs.docker_image }}-automation
           cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-automation
+          platforms: linux/amd64
+
+      - name: Check build results
+        if: steps.check-commit.outputs.skip == 'false'
+        run: |
+          echo "=== 빌드 결과 확인 ==="
+          if [[ "${{ steps.build-frontend.outcome }}" != "success" ]]; then
+            echo "❌ Frontend 이미지 빌드 실패"
+            exit 1
+          fi
+          if [[ "${{ steps.build-backend.outcome }}" != "success" ]]; then
+            echo "❌ Backend 이미지 빌드 실패"
+            exit 1
+          fi
+          if [[ "${{ steps.build-automation.outcome }}" != "success" ]]; then
+            echo "❌ Automation 이미지 빌드 실패"
+            exit 1
+          fi
+          echo "✅ 모든 이미지 빌드 성공"
 
       - name: Deploy to Auto Server
-        if: steps.check-commit.outputs.skip == 'false'
+        if: steps.check-commit.outputs.skip == 'false' && steps.build-frontend.outcome == 'success' && steps.build-backend.outcome == 'success' && steps.build-automation.outcome == 'success'
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -144,7 +168,7 @@ jobs:
 
 
       - name: Upload required files
-        if: steps.check-commit.outputs.skip == 'false'
+        if: steps.check-commit.outputs.skip == 'false' && steps.build-frontend.outcome == 'success' && steps.build-backend.outcome == 'success' && steps.build-automation.outcome == 'success'
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -154,7 +178,7 @@ jobs:
           target: "/home/kth88/services/${{ steps.vars.outputs.repo_name }}/${{ steps.vars.outputs.deploy_branch }}/"
 
       - name: Load Docker image and start services
-        if: steps.check-commit.outputs.skip == 'false'
+        if: steps.check-commit.outputs.skip == 'false' && steps.build-frontend.outcome == 'success' && steps.build-backend.outcome == 'success' && steps.build-automation.outcome == 'success'
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -172,9 +196,22 @@ jobs:
 
             # Docker Hub에서 이미지들 pull
             echo "=== Docker Hub에서 이미지들 pull ==="
-            docker pull "$DOCKER_IMAGE-front" || { echo "Frontend 이미지 pull 실패: $DOCKER_IMAGE-front"; exit 1; }
-            docker pull "$DOCKER_IMAGE-back" || { echo "Backend 이미지 pull 실패: $DOCKER_IMAGE-back"; exit 1; }
-            docker pull "$DOCKER_IMAGE-automation" || { echo "Automation 이미지 pull 실패: $DOCKER_IMAGE-automation"; exit 1; }
+            echo "Frontend 이미지 pull 시도: $DOCKER_IMAGE-front"
+            if ! docker pull "$DOCKER_IMAGE-front"; then
+              echo "Frontend 이미지 pull 실패: $DOCKER_IMAGE-front"
+              echo "이미지가 존재하지 않거나 빌드에 실패했을 수 있습니다."
+              exit 1
+            fi
+            echo "Backend 이미지 pull 시도: $DOCKER_IMAGE-back"
+            if ! docker pull "$DOCKER_IMAGE-back"; then
+              echo "Backend 이미지 pull 실패: $DOCKER_IMAGE-back"
+              exit 1
+            fi
+            echo "Automation 이미지 pull 시도: $DOCKER_IMAGE-automation"
+            if ! docker pull "$DOCKER_IMAGE-automation"; then
+              echo "Automation 이미지 pull 실패: $DOCKER_IMAGE-automation"
+              exit 1
+            fi
 
             # 이미지 존재 확인
             echo "=== 이미지 존재 확인 ==="
