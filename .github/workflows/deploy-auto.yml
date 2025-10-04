@@ -41,22 +41,45 @@ jobs:
           echo "deploy_branch=$DEPLOY_BRANCH" >> $GITHUB_OUTPUT
           echo "docker_image=${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:$DEPLOY_BRANCH" >> $GITHUB_OUTPUT
 
-      - name: Build Docker images with cache
+      - name: Login to Docker Hub
         if: steps.check-commit.outputs.skip == 'false'
-        run: |
-          # Frontend 이미지 빌드 (캐시 사용)
-          docker build --cache-from ${{ steps.vars.outputs.docker_image }}-front -f front.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-front .
-          # Backend 이미지 빌드 (캐시 사용)
-          docker build --cache-from ${{ steps.vars.outputs.docker_image }}-back -f back.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-back .
-          # Automation 이미지 빌드 (캐시 사용)
-          docker build --cache-from ${{ steps.vars.outputs.docker_image }}-automation -f automation.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-automation .
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Save Docker images
+      - name: Build and push Frontend image
         if: steps.check-commit.outputs.skip == 'false'
-        run: |
-          docker save ${{ steps.vars.outputs.docker_image }}-front | gzip > front-image.tar.gz
-          docker save ${{ steps.vars.outputs.docker_image }}-back | gzip > back-image.tar.gz
-          docker save ${{ steps.vars.outputs.docker_image }}-automation | gzip > automation-image.tar.gz
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: front.Dockerfile
+          push: true
+          tags: ${{ steps.vars.outputs.docker_image }}-front
+          cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-front
+          cache-to: type=registry,ref=${{ steps.vars.outputs.docker_image }}-front,mode=max
+
+      - name: Build and push Backend image
+        if: steps.check-commit.outputs.skip == 'false'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: back.Dockerfile
+          push: true
+          tags: ${{ steps.vars.outputs.docker_image }}-back
+          cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-back
+          cache-to: type=registry,ref=${{ steps.vars.outputs.docker_image }}-back,mode=max
+
+      - name: Build and push Automation image
+        if: steps.check-commit.outputs.skip == 'false'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: automation.Dockerfile
+          push: true
+          tags: ${{ steps.vars.outputs.docker_image }}-automation
+          cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-automation
+          cache-to: type=registry,ref=${{ steps.vars.outputs.docker_image }}-automation,mode=max
 
       - name: Deploy to Auto Server
         if: steps.check-commit.outputs.skip == 'false'
@@ -122,15 +145,6 @@ jobs:
             echo "PORT: $PORT"
             echo "COMPOSE_PROJECT_NAME: $COMPOSE_PROJECT_NAME"
 
-      - name: Upload Docker images
-        if: steps.check-commit.outputs.skip == 'false'
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "*-image.tar.gz"
-          target: "/home/kth88/services/${{ steps.vars.outputs.repo_name }}/${{ steps.vars.outputs.deploy_branch }}/"
 
       - name: Upload required files
         if: steps.check-commit.outputs.skip == 'false'
@@ -159,12 +173,11 @@ jobs:
             
             cd "$DEPLOY_PATH"
 
-            # Docker 이미지들 로드
-            echo "=== Docker 이미지들 로드 ==="
-            docker load < front-image.tar.gz
-            docker load < back-image.tar.gz
-            docker load < automation-image.tar.gz
-            rm *-image.tar.gz
+            # Docker Hub에서 이미지들 pull
+            echo "=== Docker Hub에서 이미지들 pull ==="
+            docker pull "$DOCKER_IMAGE-front"
+            docker pull "$DOCKER_IMAGE-back"
+            docker pull "$DOCKER_IMAGE-automation"
 
             # start.sh 실행 권한 부여
             chmod +x start.sh genkey.sh

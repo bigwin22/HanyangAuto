@@ -68,15 +68,15 @@ EOF
 echo ".env 파일을 로드합니다."
 export $(cat .env | grep -v '^#' | xargs)
 
-# 3. 로컬 Docker 이미지들 확인
-echo "로컬 Docker 이미지들을 확인합니다:"
+# 3. Docker Hub에서 최신 이미지들 pull
+echo "Docker Hub에서 최신 이미지들을 가져옵니다:"
 echo "- Frontend: $DOCKER_IMAGE-front"
 echo "- Backend: $DOCKER_IMAGE-back"
 echo "- Automation: $DOCKER_IMAGE-automation"
 
-docker images | grep "$DOCKER_IMAGE-front" || { echo "Frontend 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-front"; exit 1; }
-docker images | grep "$DOCKER_IMAGE-back" || { echo "Backend 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-back"; exit 1; }
-docker images | grep "$DOCKER_IMAGE-automation" || { echo "Automation 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-automation"; exit 1; }
+docker pull "$DOCKER_IMAGE-front"
+docker pull "$DOCKER_IMAGE-back"
+docker pull "$DOCKER_IMAGE-automation"
 
 # 4. Docker Compose로 서비스 재시작
 echo "Docker Compose로 서비스를 재시작합니다... (project: ${COMPOSE_PROJECT_NAME})"
