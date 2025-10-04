@@ -44,12 +44,12 @@ jobs:
       - name: Build Docker images with cache
         if: steps.check-commit.outputs.skip == 'false'
         run: |
-          # Frontend 이미지 빌드
-          docker build -f front.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-front .
-          # Backend 이미지 빌드
-          docker build -f back.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-back .
-          # Automation 이미지 빌드
-          docker build -f automation.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-automation .
+          # Frontend 이미지 빌드 (캐시 사용)
+          docker build --cache-from ${{ steps.vars.outputs.docker_image }}-front -f front.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-front .
+          # Backend 이미지 빌드 (캐시 사용)
+          docker build --cache-from ${{ steps.vars.outputs.docker_image }}-back -f back.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-back .
+          # Automation 이미지 빌드 (캐시 사용)
+          docker build --cache-from ${{ steps.vars.outputs.docker_image }}-automation -f automation.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-automation .
 
       - name: Save Docker images
         if: steps.check-commit.outputs.skip == 'false'
@@ -169,6 +169,13 @@ jobs:
             # start.sh 실행 권한 부여
             chmod +x start.sh genkey.sh
 
+            # 환경변수 export (start.sh에서 사용할 수 있도록)
+            export PROJECT_DIR="$DEPLOY_PATH"
+            export DOCKER_IMAGE="$DOCKER_IMAGE"
+            export DOMAIN="$DOMAIN"
+            export CONTAINER_NAME="$CONTAINER_NAME"
+            export PORT="$PORT"
+            export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME"
 
             # start.sh 실행
             echo "=== start.sh 실행 ==="

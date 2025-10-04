@@ -33,6 +33,26 @@ echo "배포를 시작합니다..."
 # 1. 프로젝트 디렉토리로 이동
 cd "$PROJECT_DIR" || { echo "프로젝트 디렉토리를 찾을 수 없습니다: $PROJECT_DIR"; exit 1; }
 
+# 환경변수 확인
+echo "=== 환경변수 확인 ==="
+echo "PROJECT_DIR: $PROJECT_DIR"
+echo "DOCKER_IMAGE: $DOCKER_IMAGE"
+echo "DOMAIN: $DOMAIN"
+echo "CONTAINER_NAME: $CONTAINER_NAME"
+echo "PORT: $PORT"
+echo "COMPOSE_PROJECT_NAME: $COMPOSE_PROJECT_NAME"
+
+# 필수 환경변수 확인
+if [ -z "$DOCKER_IMAGE" ]; then
+  echo "에러: DOCKER_IMAGE가 설정되지 않았습니다."
+  exit 1
+fi
+
+if [ -z "$CONTAINER_NAME" ]; then
+  echo "에러: CONTAINER_NAME이 설정되지 않았습니다."
+  exit 1
+fi
+
 # .env 파일 생성
 echo ".env 파일을 생성합니다."
 cat <<EOF > .env
