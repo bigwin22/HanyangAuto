@@ -185,14 +185,12 @@ jobs:
 
             # .env 파일 생성
             echo "=== .env 파일 생성 ==="
-            cat <<EOF > .env
-DOCKER_IMAGE=${DOCKER_IMAGE}
-DOMAIN=${DOMAIN}
-CONTAINER_NAME=${CONTAINER_NAME}
-PORT=${PORT}
-DB_ENCRYPTION_KEY_B64=$(base64 < ./data/암호화\ 키.key)
-COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
-EOF
+            echo "DOCKER_IMAGE=${DOCKER_IMAGE}" > .env
+            echo "DOMAIN=${DOMAIN}" >> .env
+            echo "CONTAINER_NAME=${CONTAINER_NAME}" >> .env
+            echo "PORT=${PORT}" >> .env
+            echo "DB_ENCRYPTION_KEY_B64=$(base64 < ./data/암호화\ 키.key)" >> .env
+            echo "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" >> .env
 
             # Docker Compose로 서비스 재시작
             echo "=== Docker Compose로 서비스 재시작 ==="
@@ -221,10 +219,8 @@ EOF
 
             # start.sh 파일 생성 (백업용)
             echo "=== start.sh 파일 생성 (백업용) ==="
-            cat <<'EOF' > start.sh
-#!/bin/bash
-# 백업용 start.sh - 워크플로우에서 자동 생성됨
-echo "이 파일은 워크플로우에서 자동으로 생성된 백업용 파일입니다."
-echo "실제 배포는 GitHub Actions 워크플로우에서 처리됩니다."
-EOF
+            echo "#!/bin/bash" > start.sh
+            echo "# 백업용 start.sh - 워크플로우에서 자동 생성됨" >> start.sh
+            echo "echo \"이 파일은 워크플로우에서 자동으로 생성된 백업용 파일입니다.\"" >> start.sh
+            echo "echo \"실제 배포는 GitHub Actions 워크플로우에서 처리됩니다.\"" >> start.sh
             chmod +x start.sh
