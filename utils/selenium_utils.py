@@ -12,22 +12,21 @@ def init_driver() -> webdriver.Chrome:
     웹 드라이버 초기화 함수 (가상 디스플레이 사용)
     """
     chrome_options = Options()
-    chrome_options.binary_location = "/usr/bin/chrome"
-    service = Service(executable_path="/usr/bin/chromedriver")
+    # Docker 환경에 최적화된 Chrome 옵션을 설정합니다.
+    chrome_options.binary_location = "/opt/chrome/chrome"
+    chrome_options.add_argument("--headless=new")  # GUI 없이 실행
+    chrome_options.add_argument("--no-sandbox")  # Sandbox 프로세스 비활성화 (컨테이너 환경 필수)
+    chrome_options.add_argument("--disable-dev-shm-usage")  # /dev/shm 대신 /tmp 사용
+    chrome_options.add_argument("--disable-gpu")  # GPU 가속 비활성화
+    chrome_options.add_argument("--window-size=1920,1080")  # 창 크기 지정
 
-    # 가상 디스플레이 설정
-    # chrome_options.add_argument("--display=:99")
-    # chrome_options.add_argument("--window-size=1920,1080")
-    
-    # 기본 Chrome 옵션
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--no-sandbox")
+    # 자동화 탐지 회피 옵션
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
-    chrome_options.add_argument("--no-first-run")
-    chrome_options.add_argument("--no-default-browser-check")
 
+    # ChromeDriver 서비스 경로를 명시적으로 설정합니다.
+    service = Service(executable_path="/opt/chromedriver/chromedriver")
  
     return webdriver.Chrome(service=service, options=chrome_options)
 

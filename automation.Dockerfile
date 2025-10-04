@@ -45,6 +45,9 @@ RUN STABLE=$(wget -q -O - https://googlechromelabs.github.io/chrome-for-testing/
     rm /tmp/chrome.zip /tmp/chromedriver.zip && \
     mv /opt/chrome-linux64 /opt/chrome && \
     mv /opt/chromedriver-linux64 /opt/chromedriver && \
+    # 권한 설정 추가
+    chmod +x /opt/chrome/chrome && \
+    chmod +x /opt/chromedriver/chromedriver && \
     ln -s /opt/chrome/chrome /usr/bin/chrome && \
     ln -s /opt/chromedriver/chromedriver /usr/bin/chromedriver
 
@@ -62,7 +65,9 @@ COPY utils/ ./utils/
 RUN groupadd -g 1000 app \
     && useradd -m -u 1000 -g 1000 app \
     && mkdir -p /app/data /app/logs \
-    && chown -R app:app /app
+    && chown -R app:app /app \
+    # Chrome과 ChromeDriver에 대한 권한 설정 추가
+    && chown -R app:app /opt/chrome /opt/chromedriver
 
 # Xvfb 시작 스크립트 생성
 RUN echo '#!/bin/bash\n\
