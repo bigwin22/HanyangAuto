@@ -150,7 +150,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "docker-compose.yml,start.sh,genkey.sh"
+          source: "docker-compose.yml"
           target: "/home/kth88/services/${{ steps.vars.outputs.repo_name }}/${{ steps.vars.outputs.deploy_branch }}/"
 
       - name: Load Docker image and start services
@@ -172,22 +172,44 @@ jobs:
 
             # Docker Hub에서 이미지들 pull
             echo "=== Docker Hub에서 이미지들 pull ==="
-            docker pull "$DOCKER_IMAGE-front"
-            docker pull "$DOCKER_IMAGE-back"
-            docker pull "$DOCKER_IMAGE-automation"
+            docker pull "$DOCKER_IMAGE-front" || { echo "Frontend 이미지 pull 실패: $DOCKER_IMAGE-front"; exit 1; }
+            docker pull "$DOCKER_IMAGE-back" || { echo "Backend 이미지 pull 실패: $DOCKER_IMAGE-back"; exit 1; }
+            docker pull "$DOCKER_IMAGE-automation" || { echo "Automation 이미지 pull 실패: $DOCKER_IMAGE-automation"; exit 1; }
 
-            # start.sh 실행 권한 부여
-            chmod +x start.sh genkey.sh
+            # 이미지 존재 확인
+            echo "=== 이미지 존재 확인 ==="
+            docker images | grep "$DOCKER_IMAGE-front" || { echo "Frontend 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-front"; exit 1; }
+            docker images | grep "$DOCKER_IMAGE-back" || { echo "Backend 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-back"; exit 1; }
+            docker images | grep "$DOCKER_IMAGE-automation" || { echo "Automation 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-automation"; exit 1; }
+            echo "모든 이미지가 성공적으로 로드되었습니다."
 
-            # start.sh 실행 (환경변수 직접 전달)
-            echo "=== start.sh 실행 ==="
-            PROJECT_DIR="$DEPLOY_PATH" \
-            DOCKER_IMAGE="$DOCKER_IMAGE" \
-            DOMAIN="$DOMAIN" \
-            CONTAINER_NAME="$CONTAINER_NAME" \
-            PORT="$PORT" \
-            COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
-            ./start.sh
+            # .env 파일 생성
+            echo "=== .env 파일 생성 ==="
+            cat <<EOF > .env
+DOCKER_IMAGE=${DOCKER_IMAGE}
+DOMAIN=${DOMAIN}
+CONTAINER_NAME=${CONTAINER_NAME}
+PORT=${PORT}
+DB_ENCRYPTION_KEY_B64=$(base64 < ./data/암호화\ 키.key)
+COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+EOF
+
+            # Docker Compose로 서비스 재시작
+            echo "=== Docker Compose로 서비스 재시작 ==="
+            
+            # (안전장치) 동일 이름의 컨테이너가 남아있으면 강제 제거
+            EXISTING=$(docker ps -aq -f name="^/${CONTAINER_NAME}" || true)
+            if [ -n "$EXISTING" ]; then
+              echo "기존 컨테이너들을 제거합니다: $EXISTING"
+              docker rm -f $EXISTING || true
+            fi
+
+            # 외부 네트워크가 없다면 생성 (traefik-net)
+            docker network inspect traefik-net >/dev/null 2>&1 || docker network create traefik-net || true
+
+            # Docker Compose 실행
+            docker-compose -p "${COMPOSE_PROJECT_NAME}" down --remove-orphans -v || true
+            docker-compose -p "${COMPOSE_PROJECT_NAME}" up -d --no-build
 
             echo "=== 배포 완료 ==="
             echo "서비스가 성공적으로 배포되었습니다."
@@ -196,3 +218,13 @@ jobs:
             else
               echo "도메인: dev-hanyang.newme.dev"
             fi
+
+            # start.sh 파일 생성 (백업용)
+            echo "=== start.sh 파일 생성 (백업용) ==="
+            cat <<'EOF' > start.sh
+#!/bin/bash
+# 백업용 start.sh - 워크플로우에서 자동 생성됨
+echo "이 파일은 워크플로우에서 자동으로 생성된 백업용 파일입니다."
+echo "실제 배포는 GitHub Actions 워크플로우에서 처리됩니다."
+EOF
+            chmod +x start.sh
