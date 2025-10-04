@@ -57,7 +57,6 @@ jobs:
           push: true
           tags: ${{ steps.vars.outputs.docker_image }}-front
           cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-front
-          cache-to: type=registry,ref=${{ steps.vars.outputs.docker_image }}-front,mode=max
 
       - name: Build and push Backend image
         if: steps.check-commit.outputs.skip == 'false'
@@ -68,7 +67,6 @@ jobs:
           push: true
           tags: ${{ steps.vars.outputs.docker_image }}-back
           cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-back
-          cache-to: type=registry,ref=${{ steps.vars.outputs.docker_image }}-back,mode=max
 
       - name: Build and push Automation image
         if: steps.check-commit.outputs.skip == 'false'
@@ -79,7 +77,6 @@ jobs:
           push: true
           tags: ${{ steps.vars.outputs.docker_image }}-automation
           cache-from: type=registry,ref=${{ steps.vars.outputs.docker_image }}-automation
-          cache-to: type=registry,ref=${{ steps.vars.outputs.docker_image }}-automation,mode=max
 
       - name: Deploy to Auto Server
         if: steps.check-commit.outputs.skip == 'false'
