@@ -118,20 +118,20 @@ jobs:
             mkdir -p logs data
 
             # 환경 변수 설정
-            export PROJECT_DIR="$DEPLOY_PATH"
-            export DOCKER_IMAGE="$DOCKER_IMAGE"
+            PROJECT_DIR="$DEPLOY_PATH"
+            DOCKER_IMAGE="$DOCKER_IMAGE"
             if [[ "$DEPLOY_BRANCH" == "main" ]]; then
-              export DOMAIN="hanyang.newme.dev"
+              DOMAIN="hanyang.newme.dev"
             else
-              export DOMAIN="dev-hanyang.newme.dev"
+              DOMAIN="dev-hanyang.newme.dev"
             fi
-            export CONTAINER_NAME="hanyangauto-$DEPLOY_BRANCH"
+            CONTAINER_NAME="hanyangauto-$DEPLOY_BRANCH"
             if [[ "$DEPLOY_BRANCH" == "main" ]]; then
-              export PORT="8000"
+              PORT="8000"
             else
-              export PORT="8001"
+              PORT="8001"
             fi
-            export COMPOSE_PROJECT_NAME="hanyangauto-$DEPLOY_BRANCH"
+            COMPOSE_PROJECT_NAME="hanyangauto-$DEPLOY_BRANCH"
             
 
             echo "=== 환경 변수 설정 완료 ==="

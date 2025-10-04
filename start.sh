@@ -53,6 +53,21 @@ if [ -z "$CONTAINER_NAME" ]; then
   exit 1
 fi
 
+if [ -z "$DOMAIN" ]; then
+  echo "에러: DOMAIN이 설정되지 않았습니다."
+  exit 1
+fi
+
+if [ -z "$PORT" ]; then
+  echo "에러: PORT가 설정되지 않았습니다."
+  exit 1
+fi
+
+if [ -z "$COMPOSE_PROJECT_NAME" ]; then
+  echo "에러: COMPOSE_PROJECT_NAME이 설정되지 않았습니다."
+  exit 1
+fi
+
 # .env 파일 생성
 echo ".env 파일을 생성합니다."
 cat <<EOF > .env
@@ -74,9 +89,16 @@ echo "- Frontend: $DOCKER_IMAGE-front"
 echo "- Backend: $DOCKER_IMAGE-back"
 echo "- Automation: $DOCKER_IMAGE-automation"
 
-docker pull "$DOCKER_IMAGE-front"
-docker pull "$DOCKER_IMAGE-back"
-docker pull "$DOCKER_IMAGE-automation"
+docker pull "$DOCKER_IMAGE-front" || { echo "Frontend 이미지 pull 실패: $DOCKER_IMAGE-front"; exit 1; }
+docker pull "$DOCKER_IMAGE-back" || { echo "Backend 이미지 pull 실패: $DOCKER_IMAGE-back"; exit 1; }
+docker pull "$DOCKER_IMAGE-automation" || { echo "Automation 이미지 pull 실패: $DOCKER_IMAGE-automation"; exit 1; }
+
+# 4. 이미지 존재 확인
+echo "=== 이미지 존재 확인 ==="
+docker images | grep "$DOCKER_IMAGE-front" || { echo "Frontend 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-front"; exit 1; }
+docker images | grep "$DOCKER_IMAGE-back" || { echo "Backend 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-back"; exit 1; }
+docker images | grep "$DOCKER_IMAGE-automation" || { echo "Automation 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-automation"; exit 1; }
+echo "모든 이미지가 성공적으로 로드되었습니다."
 
 # 4. Docker Compose로 서비스 재시작
 echo "Docker Compose로 서비스를 재시작합니다... (project: ${COMPOSE_PROJECT_NAME})"
