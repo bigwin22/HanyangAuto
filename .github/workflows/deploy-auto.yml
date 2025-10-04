@@ -1,0 +1,183 @@
+# .github/workflows/deploy-auto.yml
+name: Build and Deploy to Auto Server
+on:
+  push:
+    branches:
+      - "*"
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check commit message for COMMIT flag
+        id: check-commit
+        run: |
+          if [[ "${{ github.event.head_commit.message }}" == *"[COMMIT]"* ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "커밋 메시지에 [COMMIT] 플래그가 감지되어 작업을 중단합니다."
+            exit 0
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "계속 진행합니다."
+          fi
+
+      - name: Set variables
+        id: vars
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          if [[ "$BRANCH_NAME" == "main" ]]; then
+            DEPLOY_BRANCH="main"
+          else
+            DEPLOY_BRANCH="dev"
+          fi
+          echo "repo_name=${{ github.event.repository.name }}" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "deploy_branch=$DEPLOY_BRANCH" >> $GITHUB_OUTPUT
+          echo "docker_image=${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_REPO }}:$DEPLOY_BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Build Docker images with cache
+        if: steps.check-commit.outputs.skip == 'false'
+        run: |
+          # Frontend 이미지 빌드
+          docker build -f front.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-front .
+          # Backend 이미지 빌드
+          docker build -f back.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-back .
+          # Automation 이미지 빌드
+          docker build -f automation.Dockerfile -t ${{ steps.vars.outputs.docker_image }}-automation .
+
+      - name: Save Docker images
+        if: steps.check-commit.outputs.skip == 'false'
+        run: |
+          docker save ${{ steps.vars.outputs.docker_image }}-front | gzip > front-image.tar.gz
+          docker save ${{ steps.vars.outputs.docker_image }}-back | gzip > back-image.tar.gz
+          docker save ${{ steps.vars.outputs.docker_image }}-automation | gzip > automation-image.tar.gz
+
+      - name: Deploy to Auto Server
+        if: steps.check-commit.outputs.skip == 'false'
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # 변수 설정
+            REPO_NAME="${{ steps.vars.outputs.repo_name }}"
+            BRANCH_NAME="${{ steps.vars.outputs.branch_name }}"
+            DEPLOY_BRANCH="${{ steps.vars.outputs.deploy_branch }}"
+            DOCKER_IMAGE="${{ steps.vars.outputs.docker_image }}"
+            DEPLOY_PATH="/home/kth88/services/$REPO_NAME/$DEPLOY_BRANCH"
+            
+            echo "=== 배포 시작 ==="
+            echo "Repository: $REPO_NAME"
+            echo "Branch: $BRANCH_NAME"
+            echo "Deploy Branch: $DEPLOY_BRANCH"
+            echo "Deploy Path: $DEPLOY_PATH"
+            echo "Docker Image: $DOCKER_IMAGE"
+
+            # 배포 디렉토리 생성
+            mkdir -p "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+
+            # 기존 컨테이너 정리
+            echo "=== 기존 컨테이너 정리 ==="
+            docker-compose down --remove-orphans -v 2>/dev/null || true
+            docker rmi "$DOCKER_IMAGE" 2>/dev/null || true
+
+            # 필요한 파일들만 복사
+            echo "=== 필요한 파일들 복사 ==="
+            # docker-compose.yml, start.sh, genkey.sh 파일들을 현재 디렉토리로 복사
+            # 이 파일들은 GitHub Actions에서 직접 전송됨
+
+            # logs와 data 폴더 생성
+            mkdir -p logs data
+
+            # 환경 변수 설정
+            export PROJECT_DIR="$DEPLOY_PATH"
+            export DOCKER_IMAGE="$DOCKER_IMAGE"
+            if [[ "$DEPLOY_BRANCH" == "main" ]]; then
+              export DOMAIN="hanyang.newme.dev"
+            else
+              export DOMAIN="dev-hanyang.newme.dev"
+            fi
+            export CONTAINER_NAME="hanyangauto-$DEPLOY_BRANCH"
+            if [[ "$DEPLOY_BRANCH" == "main" ]]; then
+              export PORT="8000"
+            else
+              export PORT="8001"
+            fi
+            export COMPOSE_PROJECT_NAME="hanyangauto-$DEPLOY_BRANCH"
+            
+
+            echo "=== 환경 변수 설정 완료 ==="
+            echo "PROJECT_DIR: $PROJECT_DIR"
+            echo "DOCKER_IMAGE: $DOCKER_IMAGE"
+            echo "DOMAIN: $DOMAIN"
+            echo "CONTAINER_NAME: $CONTAINER_NAME"
+            echo "PORT: $PORT"
+            echo "COMPOSE_PROJECT_NAME: $COMPOSE_PROJECT_NAME"
+
+      - name: Upload Docker images
+        if: steps.check-commit.outputs.skip == 'false'
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "*-image.tar.gz"
+          target: "/home/kth88/services/${{ steps.vars.outputs.repo_name }}/${{ steps.vars.outputs.deploy_branch }}/"
+
+      - name: Upload required files
+        if: steps.check-commit.outputs.skip == 'false'
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "docker-compose.yml,start.sh,genkey.sh"
+          target: "/home/kth88/services/${{ steps.vars.outputs.repo_name }}/${{ steps.vars.outputs.deploy_branch }}/"
+
+      - name: Load Docker image and start services
+        if: steps.check-commit.outputs.skip == 'false'
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # 변수 설정
+            REPO_NAME="${{ steps.vars.outputs.repo_name }}"
+            BRANCH_NAME="${{ steps.vars.outputs.branch_name }}"
+            DEPLOY_BRANCH="${{ steps.vars.outputs.deploy_branch }}"
+            DOCKER_IMAGE="${{ steps.vars.outputs.docker_image }}"
+            DEPLOY_PATH="/home/kth88/services/$REPO_NAME/$DEPLOY_BRANCH"
+            
+            cd "$DEPLOY_PATH"
+
+            # Docker 이미지들 로드
+            echo "=== Docker 이미지들 로드 ==="
+            docker load < front-image.tar.gz
+            docker load < back-image.tar.gz
+            docker load < automation-image.tar.gz
+            rm *-image.tar.gz
+
+            # start.sh 실행 권한 부여
+            chmod +x start.sh genkey.sh
+
+
+            # start.sh 실행
+            echo "=== start.sh 실행 ==="
+            ./start.sh
+
+            echo "=== 배포 완료 ==="
+            echo "서비스가 성공적으로 배포되었습니다."
+            if [[ "$DEPLOY_BRANCH" == "main" ]]; then
+              echo "도메인: hanyang.newme.dev"
+            else
+              echo "도메인: dev-hanyang.newme.dev"
+            fi

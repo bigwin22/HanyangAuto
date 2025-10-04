@@ -1,8 +1,6 @@
 services:
   front:
-    build:
-      context: .
-      dockerfile: front.Dockerfile
+    image: ${DOCKER_IMAGE}-front
     container_name: ${CONTAINER_NAME}_front
     restart: always
     networks:
@@ -17,14 +15,10 @@ services:
     depends_on:
       - back
     ports:
-      - 8000:8000
+      - ${PORT:-8000}:8000
 
   automation:
-    build:
-      context: .
-      dockerfile: automation.Dockerfile
-      platforms:
-        - linux/amd64
+    image: ${DOCKER_IMAGE}-automation
     container_name: ${CONTAINER_NAME}_automation
     environment:
       - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
@@ -42,9 +36,7 @@ services:
     platform: linux/amd64
 
   back:
-    build:
-      context: .
-      dockerfile: back.Dockerfile
+    image: ${DOCKER_IMAGE}-back
     container_name: ${CONTAINER_NAME}_back
     restart: always
     environment:

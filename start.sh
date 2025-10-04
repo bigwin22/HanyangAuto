@@ -20,14 +20,6 @@ if [ ! -f "./data/암호화 키.key" ]; then
   openssl rand -base64 32 | head -c 32 > "./data/암호화 키.key"
 fi
 
-cat <<EOF > "$PROJECT_DIR/.env"
-DOCKER_IMAGE=${DOCKER_IMAGE}
-DOMAIN=${DOMAIN}
-CONTAINER_NAME=${CONTAINER_NAME}
-PORT=${PORT}
-DB_ENCRYPTION_KEY_B64=$(base64 < ./data/암호화\ 키.key)
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$CONTAINER_NAME}"
-EOF
 
 
 # Docker Compose 프로젝트 이름을 환경별로 고유하게 설정
@@ -41,9 +33,30 @@ echo "배포를 시작합니다..."
 # 1. 프로젝트 디렉토리로 이동
 cd "$PROJECT_DIR" || { echo "프로젝트 디렉토리를 찾을 수 없습니다: $PROJECT_DIR"; exit 1; }
 
-# 3. Docker Hub에서 최신 이미지를 가져옴
-echo "Docker Hub에서 최신 이미지를 가져옵니다: $DOCKER_IMAGE"
-docker pull "$DOCKER_IMAGE"
+# .env 파일 생성
+echo ".env 파일을 생성합니다."
+cat <<EOF > .env
+DOCKER_IMAGE=${DOCKER_IMAGE}
+DOMAIN=${DOMAIN}
+CONTAINER_NAME=${CONTAINER_NAME}
+PORT=${PORT}
+DB_ENCRYPTION_KEY_B64=$(base64 < ./data/암호화\ 키.key)
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$CONTAINER_NAME}"
+EOF
+
+# .env 파일 로드
+echo ".env 파일을 로드합니다."
+export $(cat .env | grep -v '^#' | xargs)
+
+# 3. 로컬 Docker 이미지들 확인
+echo "로컬 Docker 이미지들을 확인합니다:"
+echo "- Frontend: $DOCKER_IMAGE-front"
+echo "- Backend: $DOCKER_IMAGE-back"
+echo "- Automation: $DOCKER_IMAGE-automation"
+
+docker images | grep "$DOCKER_IMAGE-front" || { echo "Frontend 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-front"; exit 1; }
+docker images | grep "$DOCKER_IMAGE-back" || { echo "Backend 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-back"; exit 1; }
+docker images | grep "$DOCKER_IMAGE-automation" || { echo "Automation 이미지를 찾을 수 없습니다: $DOCKER_IMAGE-automation"; exit 1; }
 
 # 4. Docker Compose로 서비스 재시작
 echo "Docker Compose로 서비스를 재시작합니다... (project: ${COMPOSE_PROJECT_NAME})"
@@ -61,6 +74,6 @@ fi
 docker network inspect traefik-net >/dev/null 2>&1 || docker network create traefik-net || true
 
 docker-compose -p "${COMPOSE_PROJECT_NAME}" down --remove-orphans -v || true
-docker-compose -p "${COMPOSE_PROJECT_NAME}" up -d --pull always --no-build
+docker-compose -p "${COMPOSE_PROJECT_NAME}" up -d --no-build
 
 echo "배포가 성공적으로 완료되었습니다."
