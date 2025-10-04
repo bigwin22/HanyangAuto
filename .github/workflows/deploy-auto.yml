@@ -169,16 +169,14 @@ jobs:
             # start.sh 실행 권한 부여
             chmod +x start.sh genkey.sh
 
-            # 환경변수 export (start.sh에서 사용할 수 있도록)
-            export PROJECT_DIR="$DEPLOY_PATH"
-            export DOCKER_IMAGE="$DOCKER_IMAGE"
-            export DOMAIN="$DOMAIN"
-            export CONTAINER_NAME="$CONTAINER_NAME"
-            export PORT="$PORT"
-            export COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME"
-
-            # start.sh 실행
+            # start.sh 실행 (환경변수 직접 전달)
             echo "=== start.sh 실행 ==="
+            PROJECT_DIR="$DEPLOY_PATH" \
+            DOCKER_IMAGE="$DOCKER_IMAGE" \
+            DOMAIN="$DOMAIN" \
+            CONTAINER_NAME="$CONTAINER_NAME" \
+            PORT="$PORT" \
+            COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
             ./start.sh
 
             echo "=== 배포 완료 ==="
