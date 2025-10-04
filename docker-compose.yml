@@ -6,7 +6,14 @@ services:
     container_name: ${CONTAINER_NAME}_front
     restart: always
     networks:
-      - hanyang-net   
+      - hanyang-net  
+      - traefik-net 
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hanyang-automation.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.hanyang-automation.entrypoints=web,websecure"
+      - "traefik.http.routers.hanyang-automation.tls.certresolver=letsencrypt"
+      - "traefik.http.services.hanyang-automation.loadbalancer.server.port=${PORT}"
     depends_on:
       - back
     ports:
@@ -54,3 +61,5 @@ services:
 networks:
   hanyang-net:
     driver: bridge
+  traefik-net:
+    external: true
