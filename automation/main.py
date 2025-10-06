@@ -117,13 +117,17 @@ async def run_daily_automation():
     This function is called by the scheduler at 7:00 AM daily.
     """
     server_logger.info('scheduler', 'Starting daily automation for all users')
-    users = get_all_users()
+    loop = asyncio.get_running_loop()
+    users = await loop.run_in_executor(None, get_all_users)
     server_logger.info('scheduler', f'Found {len(users)} users for daily automation')
     
-    for user in users:
+    for i, user in enumerate(users):
         try:
             schedule_user_from_db(user)
             server_logger.info('scheduler', f'Scheduled automation for user: {user[1]}')
+            # Stagger the start of the next job to avoid resource spikes
+            if (i + 1) < len(users):
+                await asyncio.sleep(15) # 15-second delay
         except Exception as e:
             server_logger.error('scheduler', f'Failed to schedule automation for user {user[1]}: {e}')
     
@@ -164,7 +168,8 @@ async def on_user_registered(req: UserRegistered):
     try:
         server_logger.info('request', f'User registration trigger received for: {req.userId}')
         
-        user = get_user_by_id(req.userId)
+        loop = asyncio.get_running_loop()
+        user = await loop.run_in_executor(None, get_user_by_id, req.userId)
         if not user:
             server_logger.error('request', f'User not found in database: {req.userId}')
             raise HTTPException(status_code=404, detail="User not found")

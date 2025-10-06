@@ -131,17 +131,21 @@ def get_admin_users():
 async def user_login(req: UserLoginRequest):
     logger = HanyangLogger('system')
     user_logger = HanyangLogger('user', user_id=req.userId)
-    user = db.get_user_by_id(req.userId)
+    
+    import asyncio
+    loop = asyncio.get_running_loop()
+
+    user = await loop.run_in_executor(None, db.get_user_by_id, req.userId)
     is_new_user = False
     
     if not user:
-        db.add_user(req.userId, req.password)
-        user = db.get_user_by_id(req.userId)
+        await loop.run_in_executor(None, db.add_user, req.userId, req.password)
+        user = await loop.run_in_executor(None, db.get_user_by_id, req.userId)
         logger.info('user', f'신규 유저 등록: {req.userId}')
         user_logger.info('user', '신규 유저 등록')
         is_new_user = True
     else:
-        db.update_user_pwd(req.userId, req.password)
+        await loop.run_in_executor(None, db.update_user_pwd, req.userId, req.password)
         logger.info('user', f'기존 유저 비밀번호 업데이트: {req.userId}')
         user_logger.info('user', '기존 유저 비밀번호 업데이트')
     
@@ -199,24 +203,37 @@ def admin_change_password(req: AdminChangePasswordRequest, request: Request):
     request.session["admin_logged_in"] = None
     return {"success": True, "message": "비밀번호가 성공적으로 변경되었습니다."}
 
-@app.get("/api/admin/user/{user_id}/logs", dependencies=[Depends(get_current_admin)])
-async def get_user_logs(user_id: str):
+def _get_logs_sync(user_id: str):
     import glob
     from datetime import datetime
 
-    # 오늘 날짜의 로그만 찾음
     today = datetime.now().strftime("%Y%m%d")
     logs_base_dir = os.path.join("logs")
     user_log_dir = os.path.join(logs_base_dir, today, "user", user_id)
     if not os.path.isdir(user_log_dir):
-        return JSONResponse(status_code=404, content={"message": "로그 파일 경로 없음"})
+        return None, "path_not_found"
+    
     log_files = sorted(glob.glob(os.path.join(user_log_dir, "log*.log")))
     if not log_files:
-        return JSONResponse(status_code=404, content={"message": "오늘 날짜 로그 파일 없음"})
+        return None, "file_not_found"
+        
     latest_log_file = log_files[-1]
     with open(latest_log_file, "r", encoding="utf-8") as f:
         log_content = f.read()
-    return log_content
+    return log_content, "success"
+
+@app.get("/api/admin/user/{user_id}/logs", dependencies=[Depends(get_current_admin)])
+async def get_user_logs(user_id: str):
+    import asyncio
+    loop = asyncio.get_running_loop()
+    log_content, status = await loop.run_in_executor(None, _get_logs_sync, user_id)
+
+    if status == "path_not_found":
+        return JSONResponse(status_code=404, content={"message": "로그 파일 경로 없음"})
+    if status == "file_not_found":
+        return JSONResponse(status_code=404, content={"message": "오늘 날짜 로그 파일 없음"})
+    
+    return JSONResponse(content=log_content)
 
 @app.post("/api/admin/trigger-all", dependencies=[Depends(get_current_admin)])
 async def trigger_all_users():
