@@ -8,6 +8,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException,
 from utils.selenium_utils import init_driver
 from utils.logger import HanyangLogger
 from utils.database import update_user_status
+import time
 
 def login(driver: webdriver.Chrome, id: str, pwd: str, logger=None) -> Dict[str, Union[bool, str]]:
     """
@@ -265,6 +266,7 @@ def learn_lecture(driver: webdriver.Chrome, lecture_url: str, user_id: str) -> D
                     )
                     now_percentage = driver.find_element(By.CSS_SELECTOR, "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(2)").text
                     user_logger.info('progress', f'동영상 강의 진행 상태: {now_percentage}')
+                    time.sleep(300)
                 except Exception as e:
                     return {"learn": False, "msg": f"동영상 강의 진행 상태 로깅 실패: {e}"}
         except Exception as e:
