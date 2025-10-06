@@ -102,7 +102,7 @@ def schedule_user_from_db(user_row):
         learned,
     )
 
-def run_daily_automation():
+async def run_daily_automation():
     """
     Run automation for all users in the database.
     This function is called by the scheduler at 7:00 AM daily.
@@ -179,7 +179,7 @@ async def trigger_daily():
     """
     try:
         server_logger.info('request', 'Manual daily automation trigger received')
-        run_daily_automation()
+        await run_daily_automation()
         return {"status": "accepted", "message": "Daily automation triggered for all users"}
         
     except Exception as e:
