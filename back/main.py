@@ -209,10 +209,10 @@ async def get_user_logs(user_id: str):
     logs_base_dir = os.path.join("logs")
     user_log_dir = os.path.join(logs_base_dir, today, "user", user_id)
     if not os.path.isdir(user_log_dir):
-        return JSONResponse(status_code=404, content={"message": "로그 파일 없음"})
+        return JSONResponse(status_code=404, content={"message": "로그 파일 경로 없음"})
     log_files = sorted(glob.glob(os.path.join(user_log_dir, "log*.log")))
     if not log_files:
-        return JSONResponse(status_code=404, content={"message": "로그 파일 없음"})
+        return JSONResponse(status_code=404, content={"message": "오늘 날짜 로그 파일 없음"})
     latest_log_file = log_files[-1]
     with open(latest_log_file, "r", encoding="utf-8") as f:
         log_content = f.read()
