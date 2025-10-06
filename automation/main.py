@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from zoneinfo import ZoneInfo
+from fastapi.middleware.cors import CORSMiddleware
 
 # Assuming the app is run from the project root, so utils and automation are importable
 from automation import run_user_automation
@@ -38,6 +39,14 @@ async def lifespan(app: FastAPI):
         executor.shutdown(wait=True)
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class AutomationRequest(BaseModel):
     userId: str

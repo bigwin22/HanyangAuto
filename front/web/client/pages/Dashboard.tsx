@@ -113,6 +113,28 @@ export default function Dashboard() {
     }
   };
 
+  const handleTriggerAll = async () => {
+    if (!confirm("모든 유저의 자동 수강을 시작하시겠습니까?")) {
+      return;
+    }
+    try {
+      // The automation service runs on port 7000
+      const res = await fetch("/api/admin/trigger-all", {
+        method: "POST",
+      });
+      if (res.ok) {
+        const result = await res.json();
+        alert(`성공: ${result.message}`);
+      } else {
+        const error = await res.json();
+        alert(`오류: ${error.detail || "알 수 없는 오류가 발생했습니다."}`);
+      }
+    } catch (error) {
+      console.error("Failed to trigger daily automation:", error);
+      alert("자동화 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.");
+    }
+  };
+
   const getStatusColor = (status: string) => {
     if (status === "active") return "#10B981";
     if (status === "completed") return "#3B82F6";
@@ -222,10 +244,16 @@ export default function Dashboard() {
 
         {/* User Management Table */}
         <div className="bg-white rounded-[12px] shadow-sm border border-[#E5E7EB]">
-          <div className="px-6 py-4 border-b border-[#E5E7EB] max-sm:px-4">
+          <div className="flex justify-between items-center px-6 py-4 border-b border-[#E5E7EB] max-sm:px-4">
             <h2 className="text-[18px] font-semibold text-[#111827] max-sm:text-[16px]">
               유저 관리
             </h2>
+            <button
+              onClick={handleTriggerAll}
+              className="px-4 py-2 bg-[#3B82F6] text-white rounded-[8px] hover:bg-[#2563EB] text-[14px] max-sm:px-2 max-sm:text-[12px]"
+            >
+              모든 유저 수강 시작
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">

@@ -217,3 +217,18 @@ async def get_user_logs(user_id: str):
     with open(latest_log_file, "r", encoding="utf-8") as f:
         log_content = f.read()
     return log_content
+
+@app.post("/api/admin/trigger-all", dependencies=[Depends(get_current_admin)])
+async def trigger_all_users():
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{RECEIVE_SERVER_URL}/trigger-daily",
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                pass
+            else:
+               pass
+    except Exception as e:
+        pass
