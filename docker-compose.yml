@@ -1,5 +1,8 @@
 services:
   front:
+    build:
+      context: .
+      dockerfile: front.Dockerfile
     image: ${DOCKER_IMAGE}-front
     container_name: ${CONTAINER_NAME}_front
     restart: always
@@ -18,6 +21,9 @@ services:
       - ${PORT:-8000}:8000
 
   automation:
+    build:
+      context: .
+      dockerfile: automation.Dockerfile
     image: ${DOCKER_IMAGE}-automation
     container_name: ${CONTAINER_NAME}_automation
     environment:
@@ -36,6 +42,9 @@ services:
     platform: linux/amd64
 
   back:
+    build:
+      context: .
+      dockerfile: back.Dockerfile
     image: ${DOCKER_IMAGE}-back
     container_name: ${CONTAINER_NAME}_back
     restart: always
