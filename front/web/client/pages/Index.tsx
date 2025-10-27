@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, FileText, X } from "lucide-react";
+import { Eye, EyeOff, FileText, X, Loader2 } from "lucide-react";
 import hanyangLogo from "../public/hanyang_logo.png";
 
 export default function Index() {
@@ -10,6 +10,8 @@ export default function Index() {
   const [error, setError] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyStatus, setVerifyStatus] = useState("");
   const navigate = useNavigate();
 
   const togglePasswordVisibility = () => {
@@ -19,27 +21,49 @@ export default function Index() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    
+
     if (!agreedToTerms) {
       setError("약관에 동의해주세요.");
       return;
     }
-    
-    // 실제 API로 로그인 요청
+
+    setIsVerifying(true);
+
     try {
-      const res = await fetch("/api/user/login", {
+      // 1단계: 계정 검증
+      setVerifyStatus("계정을 확인하는 중입니다...");
+      const verifyRes = await fetch("/api/user/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, password }),
       });
-      if (res.ok) {
+
+      const verifyData = await verifyRes.json();
+
+      if (!verifyData.success) {
+        setError(verifyData.message || "아이디 또는 비밀번호가 올바르지 않습니다.");
+        setIsVerifying(false);
+        return;
+      }
+
+      // 2단계: 검증 성공, 실제 등록 진행
+      setVerifyStatus("계정 인증 성공! 등록을 진행하고 있습니다...");
+      const loginRes = await fetch("/api/user/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, password }),
+      });
+
+      if (loginRes.ok) {
         navigate("/success", { state: { userId } });
       } else {
-        const data = await res.json();
-        setError(data.message || "로그인 실패");
+        const loginData = await loginRes.json();
+        setError(loginData.message || "등록 중 오류가 발생했습니다.");
+        setIsVerifying(false);
       }
     } catch {
-      setError("서버 오류");
+      setError("서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      setIsVerifying(false);
     }
   };
 
@@ -53,11 +77,26 @@ export default function Index() {
             className="w-[80px] h-[80px] mb-4 rounded-[12px]"
           />
           <h1 className="text-[24px] font-bold text-[#003366] text-center max-sm:text-[20px]">
-            한양대학교 자동화 시스템
+            {isVerifying ? "계정 검증 중" : "한양대학교 자동화 시스템"}
           </h1>
         </div>
 
-        <form className="space-y-6" onSubmit={handleSubmit}>
+        {isVerifying ? (
+          // 로딩 화면
+          <div className="space-y-6 text-center">
+            <div className="flex justify-center">
+              <Loader2 className="w-16 h-16 text-[#003366] animate-spin" />
+            </div>
+            <div className="text-[16px] text-[#374151] font-medium">
+              {verifyStatus}
+            </div>
+            <div className="text-[14px] text-[#6B7280]">
+              잠시만 기다려 주세요.
+            </div>
+          </div>
+        ) : (
+          // 로그인 폼
+          <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
             <label className="block text-[14px] font-medium text-[#374151] mb-2">
               아이디
@@ -142,7 +181,8 @@ export default function Index() {
             로그인
           </button>
         </form>
-        
+        )}
+
         {/* Copyright 정보 */}
         <div className="mt-8 text-center">
           <p className="text-xs text-[#6B7280]">

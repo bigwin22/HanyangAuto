@@ -11,9 +11,10 @@ from zoneinfo import ZoneInfo
 from fastapi.middleware.cors import CORSMiddleware
 
 # Assuming the app is run from the project root, so utils and automation are importable
-from automation import run_user_automation
+from automation import run_user_automation, login
 from utils.database import add_learned_lecture, decrypt_password, update_user_status, get_all_users, get_user_by_id, get_learned_lectures
 from utils.logger import HanyangLogger
+from utils.selenium_utils import init_driver
 
 # Create a logger for the server
 server_logger = HanyangLogger('server', user_id='receive_server')
@@ -56,6 +57,10 @@ class AutomationRequest(BaseModel):
 
 class UserRegistered(BaseModel):
     userId: str
+
+class VerifyCredentialsRequest(BaseModel):
+    userId: str
+    password: str
 
 def automation_task_wrapper(userId: str, encrypted_pwd: str, userNum: int, learnedLectures: list):
     """
@@ -195,10 +200,50 @@ async def trigger_daily():
         server_logger.info('request', 'Manual daily automation trigger received')
         await run_daily_automation()
         return {"status": "accepted", "message": "Daily automation triggered for all users"}
-        
+
     except Exception as e:
         server_logger.error('request', f'Failed to trigger daily automation: {e}')
         raise HTTPException(status_code=500, detail=f"Failed to trigger daily automation: {e}")
+
+@app.post("/verify-credentials")
+async def verify_credentials(req: VerifyCredentialsRequest):
+    """
+    Verify user credentials by attempting to login to Hanyang University LMS.
+    Does not save to database or trigger automation.
+    Returns success if login is successful, error otherwise.
+    """
+    driver = None
+    try:
+        server_logger.info('request', f'Credential verification request received for user: {req.userId}')
+
+        # Run the login verification in a thread to avoid blocking
+        loop = asyncio.get_running_loop()
+
+        def verify_login():
+            nonlocal driver
+            driver = init_driver()
+            verify_logger = HanyangLogger('system')
+            result = login(driver, req.userId, req.password, logger=verify_logger)
+            driver.quit()
+            return result
+
+        result = await loop.run_in_executor(executor, verify_login)
+
+        if result.get("login"):
+            server_logger.info('request', f'Credential verification successful for user: {req.userId}')
+            return {"success": True, "message": "계정 인증 성공"}
+        else:
+            server_logger.info('request', f'Credential verification failed for user: {req.userId} - {result.get("msg")}')
+            return {"success": False, "message": "아이디 또는 비밀번호가 올바르지 않습니다."}
+
+    except Exception as e:
+        server_logger.error('request', f'Error during credential verification for user {req.userId}: {e}')
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
+        raise HTTPException(status_code=500, detail=f"계정 검증 중 오류가 발생했습니다: {str(e)}")
 
 # To run this server, execute the following command from the project root directory:
 # uvicorn main:app --host 0.0.0.0 --port 7000

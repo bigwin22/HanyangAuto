@@ -105,6 +105,11 @@ app.add_middleware(
 class UserLoginRequest(BaseModel):
     userId: str
     password: str
+
+class UserVerifyRequest(BaseModel):
+    userId: str
+    password: str
+
 class AdminLoginRequest(BaseModel):
     adminId: str
     adminPassword: str
@@ -126,6 +131,41 @@ def get_admin_users():
             "courses": db.get_learned_lectures(row[0]),
         })
     return users
+
+@app.post("/api/user/verify")
+async def user_verify(req: UserVerifyRequest):
+    """
+    Verify user credentials by calling the automation service.
+    Does not save to database or trigger automation.
+    """
+    logger = HanyangLogger('system')
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{RECEIVE_SERVER_URL}/verify-credentials",
+                json={"userId": req.userId, "password": req.password},
+                timeout=30.0
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    logger.info('user', f'계정 검증 성공: {req.userId}')
+                    return {"success": True, "message": result.get("message", "계정 인증 성공")}
+                else:
+                    logger.info('user', f'계정 검증 실패: {req.userId}')
+                    return {"success": False, "message": result.get("message", "아이디 또는 비밀번호가 올바르지 않습니다.")}
+            else:
+                logger.error('user', f'계정 검증 요청 실패: {req.userId} (status: {response.status_code})')
+                return {"success": False, "message": "계정 검증 중 오류가 발생했습니다."}
+
+    except httpx.TimeoutException:
+        logger.error('user', f'계정 검증 타임아웃: {req.userId}')
+        return {"success": False, "message": "계정 검증 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."}
+    except Exception as e:
+        logger.error('user', f'계정 검증 오류: {req.userId} - {e}')
+        return {"success": False, "message": "계정 검증 중 오류가 발생했습니다."}
 
 @app.post("/api/user/login")
 async def user_login(req: UserLoginRequest):
