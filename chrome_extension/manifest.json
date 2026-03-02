@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "HanyangAuto Extension",
+  "version": "1.0.0",
+  "description": "한양대학교 LMS 강의 자동 수강 익스텐션 (서버 없이 클라이언트 단독 동작)",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.hanyang.ac.kr/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.hanyang.ac.kr/*"],
+      "js": ["content_script.js"],
+      "all_frames": true
+    }
+  ],
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}
