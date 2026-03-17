@@ -291,6 +291,12 @@ const isScheduledLecture = (snapshot) => {
   ].some((marker) => combined.includes(marker));
 };
 
+const isNonRequiredRecording = (snapshot) => {
+  const title = normalizeText(document.title || "");
+  const combined = [...(snapshot.statusParts || []), snapshot.bodyText || "", title].join(" ");
+  return ["강의녹화", "녹화", "대면", "대면 강의"].some((marker) => combined.includes(marker));
+};
+
 const handleAttendanceFrame = async () => {
   const hycmsFrame = document.querySelector("iframe")?.getBoundingClientRect();
   if (hycmsFrame) {
@@ -311,6 +317,18 @@ const handleAttendanceFrame = async () => {
         markProcessed: false,
       }).catch(() => {});
       await reportDebug("lecture_scheduled", "학습 예정 강의 스킵", { statusParts: snapshot.statusParts });
+    }
+    return;
+  }
+
+  if (isNonRequiredRecording(snapshot)) {
+    if (oncePer(`lecture_non_required:${location.href}`, 10000)) {
+      await send("LECTURE_SKIPPED", {
+        lectureUrl: window.top.location.href,
+        reason: "대면/강의녹화 유형으로 판단되어 스킵",
+        markProcessed: true,
+      }).catch(() => {});
+      await reportDebug("lecture_non_required", "대면/강의녹화 강의 스킵", { statusParts: snapshot.statusParts });
     }
     return;
   }

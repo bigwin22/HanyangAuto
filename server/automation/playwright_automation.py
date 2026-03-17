@@ -161,6 +161,20 @@ def _is_scheduled_lecture(snapshot: Dict[str, Any]) -> bool:
     return any(marker in combined for marker in markers)
 
 
+def _is_non_required_recording(snapshot: Dict[str, Any], lecture: Optional[LectureItem] = None) -> bool:
+    body_text = str(snapshot.get("bodyText") or "")
+    status_parts = [str(part or "") for part in snapshot.get("statusParts") or []]
+    lecture_title = str(lecture.title if lecture else "")
+    combined = " ".join(status_parts + [body_text, lecture_title])
+    markers = [
+        "강의녹화",
+        "녹화",
+        "대면",
+        "대면 강의",
+    ]
+    return any(marker in combined for marker in markers)
+
+
 def _read_attendance_snapshot(frame: Frame) -> Dict[str, Any]:
     return frame.evaluate(
         """() => {
@@ -604,6 +618,9 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     if _is_scheduled_lecture(initial):
         logger.info("lecture", f"scheduled lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
         return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
+    if _is_non_required_recording(initial, lecture):
+        logger.info("lecture", f"non-required recording skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+        return {"learn": True, "msg": "non-required recording"}
     if initial["completed"]:
         logger.info("lecture", f"already completed: {lecture.title}")
         return {"learn": True, "msg": "already completed"}
@@ -619,6 +636,9 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
             if _is_scheduled_lecture(initial):
                 logger.info("lecture", f"scheduled lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
                 return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
+            if _is_non_required_recording(initial, lecture):
+                logger.info("lecture", f"non-required recording skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+                return {"learn": True, "msg": "non-required recording"}
             if initial["completed"]:
                 logger.info("lecture", f"already completed after sync: {lecture.title}")
                 return {"learn": True, "msg": "already completed after sync"}
@@ -641,6 +661,9 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
         if _is_scheduled_lecture(snapshot):
             logger.info("lecture", f"scheduled lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
             return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
+        if _is_non_required_recording(snapshot, lecture):
+            logger.info("lecture", f"non-required recording skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
+            return {"learn": True, "msg": "non-required recording"}
         if snapshot["completed"]:
             logger.info("lecture", f"completed: {lecture.title}")
             return {"learn": True, "msg": "completed"}
