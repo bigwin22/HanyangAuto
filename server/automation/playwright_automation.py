@@ -18,9 +18,11 @@ MODULES_API = "/api/v1/courses/{course_id}/modules?include[]=items&per_page=100"
 
 DISCOVERY_TIMEOUT_MS = 20_000
 LECTURE_LOAD_TIMEOUT_MS = 30_000
-STATUS_POLL_INTERVAL_SEC = 20
+STATUS_POLL_INTERVAL_SEC = 5
 STATUS_REFRESH_INTERVAL_SEC = 45
 POST_REFRESH_WAIT_SEC = 3
+INITIAL_STATUS_SYNC_ATTEMPTS = 4
+INITIAL_STATUS_SYNC_WAIT_SEC = 1
 DEFAULT_DURATION_SEC = 60 * 60
 MAX_LECTURE_RUNTIME_SEC = 3 * 60 * 60
 
@@ -332,6 +334,20 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     if initial["completed"]:
         logger.info("lecture", f"already completed: {lecture.title}")
         return {"learn": True, "msg": "already completed"}
+
+    # Many already-finished lectures briefly look incomplete until the
+    # attendance page synchronizes server state. Try several quick syncs before
+    # we even consider starting playback.
+    if initial["hasRefreshButton"]:
+        for attempt in range(INITIAL_STATUS_SYNC_ATTEMPTS):
+            _refresh_status(attendance_frame, logger)
+            attendance_frame = _wait_for_attendance_frame(page)
+            initial = _read_attendance_snapshot(attendance_frame)
+            if initial["completed"]:
+                logger.info("lecture", f"already completed after sync: {lecture.title}")
+                return {"learn": True, "msg": "already completed after sync"}
+            if attempt + 1 < INITIAL_STATUS_SYNC_ATTEMPTS:
+                time.sleep(INITIAL_STATUS_SYNC_WAIT_SEC)
 
     duration_sec = min(
         max(_parse_duration_seconds(initial["statusParts"] + [initial["bodyText"]]), 180),
