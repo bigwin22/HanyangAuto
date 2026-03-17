@@ -3,21 +3,86 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { width: 250px; padding: 15px; font-family: sans-serif; }
-    .container { display: flex; flex-direction: column; gap: 10px; }
-    h1 { font-size: 18px; margin: 0; color: #003d7c; }
-    button { padding: 10px; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    #startBtn { background-color: #003d7c; }
-    #stopBtn { background-color: #d9534f; margin-top: 5px; }
-    #status { font-size: 12px; color: #666; margin-top: 5px; }
+    body {
+      width: 300px;
+      margin: 0;
+      padding: 14px;
+      font-family: "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      background: #f5f7fa;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0;
+      color: #0a2b5f;
+    }
+    label {
+      font-size: 12px;
+      color: #334155;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    input[type="text"], input[type="password"] {
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 13px;
+      background: #fff;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #334155;
+    }
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 10px;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #startBtn { background: #0a2b5f; }
+    #stopBtn { background: #b91c1c; }
+    #status {
+      font-size: 12px;
+      color: #475569;
+      background: #e2e8f0;
+      padding: 8px;
+      border-radius: 6px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>HanyangAuto</h1>
+    <label>
+      학번/아이디
+      <input id="userId" type="text" autocomplete="username" />
+    </label>
+    <label>
+      비밀번호
+      <input id="password" type="password" autocomplete="current-password" />
+    </label>
+    <label class="row">
+      <input id="autoLogin" type="checkbox" />
+      로그인 자동 입력 사용
+    </label>
+    <label class="row">
+      <input id="resetLearned" type="checkbox" />
+      기존 완료 기록 초기화 후 시작
+    </label>
     <button id="startBtn">자동 수강 시작</button>
     <button id="stopBtn">중지</button>
     <div id="status">상태 확인 중...</div>
+    <div id="debug" style="font-size:11px;color:#1e293b;background:#dbeafe;padding:8px;border-radius:6px;white-space:pre-wrap;">디버그 상태 없음</div>
   </div>
   <script src="popup.js"></script>
 </body>
