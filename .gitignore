@@ -6,4 +6,7 @@ ssh_public_key.txt
 .db
 .env
 .pyc
+__pycache__/
 /data
+/server/data
+/server/logs

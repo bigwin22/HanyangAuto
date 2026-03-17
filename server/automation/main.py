@@ -1,6 +1,7 @@
 # /Users/kth88/Documents/CODING/HanyangAuto/automation/receive_server.py
 import os
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
@@ -10,8 +11,8 @@ from apscheduler.triggers.cron import CronTrigger
 from zoneinfo import ZoneInfo
 from fastapi.middleware.cors import CORSMiddleware
 
-# Assuming the app is run from the project root, so utils and automation are importable
-from automation import run_user_automation
+# Package-local runner
+from .playwright_automation import run_user_automation, verify_user_login
 from utils.database import add_learned_lecture, decrypt_password, update_user_status, get_all_users, get_user_by_id, get_learned_lectures
 from utils.logger import HanyangLogger
 
@@ -56,6 +57,11 @@ class AutomationRequest(BaseModel):
 
 class UserRegistered(BaseModel):
     userId: str
+
+
+class CredentialVerificationRequest(BaseModel):
+    userId: str
+    password: str
 
 def automation_task_wrapper(userId: str, encrypted_pwd: str, userNum: int, learnedLectures: list):
     """
@@ -184,6 +190,22 @@ async def on_user_registered(req: UserRegistered):
     except Exception as e:
         server_logger.error('request', f'Failed to schedule automation for newly registered user {req.userId}: {e}')
         raise HTTPException(status_code=500, detail=f"Failed to schedule automation for user {req.userId}: {e}")
+
+
+@app.post("/verify-login")
+async def verify_login(req: CredentialVerificationRequest):
+    """
+    Verify whether the provided Hanyang credentials can log into the LMS.
+    """
+    try:
+        server_logger.info("request", f"Login verification requested for: {req.userId}")
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(executor, verify_user_login, req.userId, req.password)
+        status_code = 200 if result.get("success") else 401
+        return JSONResponse(status_code=status_code, content=result)
+    except Exception as e:
+        server_logger.error("request", f"Login verification failed for {req.userId}: {e}")
+        raise HTTPException(status_code=500, detail=f"Login verification failed: {e}")
 
 @app.post("/trigger-daily")
 async def trigger_daily():

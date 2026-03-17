@@ -1,22 +1,25 @@
 const LMS_HOST = "learning.hanyang.ac.kr";
-const TICK_MS = 2000;
+const HYCMS_HOST = "hycms.hanyang.ac.kr";
+const TICK_MS = 2500;
+const STATUS_REFRESH_MS = 45000;
 
 const state = {
   busy: false,
   panelMounted: false,
-  lastStep: "",
-  lastDetail: "",
 };
 
-const now = () => Date.now();
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const getStore = (keys) => chrome.storage.local.get(keys);
 const send = (action, payload = {}) => chrome.runtime.sendMessage({ action, ...payload });
 
-const log = (...args) => console.log("[HanyangAuto]", ...args);
+const normalizeText = (value) => (value || "").replace(/\s+/g, " ").trim();
+const toAbsoluteLmsUrl = (value) => {
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  return new URL(value, `${location.protocol}//${LMS_HOST}`).toString();
+};
 
 const ensureDebugPanel = () => {
-  if (state.panelMounted) return;
+  if (state.panelMounted || window !== window.top) return;
   const panel = document.createElement("div");
   panel.id = "hanyang-auto-debug-panel";
   panel.style.cssText = [
@@ -47,38 +50,27 @@ const renderDebugPanel = (data) => {
   const panel = document.getElementById("hanyang-auto-debug-panel");
   if (!panel) return;
 
-  const lectureLines = (data.detectedLectures || [])
-    .map((lec, idx) => {
-      const status = lec.completed ? "완료" : "미완료";
-      return `${idx + 1}. [${status}] ${lec.title || "(제목없음)"}`;
-    })
-    .join("\n");
-
   panel.innerHTML = [
     "<div style='font-weight:700;color:#93c5fd;margin-bottom:6px'>HanyangAuto Debug</div>",
     `<div>Step: ${data.step || "-"}</div>`,
     `<div>Detail: ${data.detail || "-"}</div>`,
-    `<div>Frame: ${window === window.top ? "top" : "iframe"}</div>`,
-    `<div>URL: ${location.href}</div>`,
-    `<div>CourseQueue: ${(data.courseQueue || []).join(", ") || "-"}</div>`,
-    `<div>LearnedCount: ${data.learnedCount ?? 0}</div>`,
+    `<div>Frame: ${data.frame || "-"}</div>`,
+    `<div>URL: ${data.url || "-"}</div>`,
+    `<div>RemainingLectures: ${data.remainingLectures ?? "-"}</div>`,
+    `<div>LearnedCount: ${data.learnedCount ?? "-"}</div>`,
     `<div>CurrentLecture: ${data.currentLectureUrl || "-"}</div>`,
-    `<div style='margin-top:8px;font-weight:700;color:#bfdbfe'>Detected Lectures</div>`,
-    `<pre style='white-space:pre-wrap;margin:4px 0 0'>${lectureLines || "-"}</pre>`,
     `<div style='margin-top:8px;color:#93c5fd'>Updated: ${new Date().toLocaleTimeString()}</div>`,
   ].join("");
 };
 
 const reportDebug = async (step, detail, extra = {}) => {
-  state.lastStep = step;
-  state.lastDetail = detail || "";
-  const store = await getStore(["courseQueue", "learnedLectures", "currentLectureUrl"]);
+  const store = await getStore(["lectureQueue", "learnedLectures", "currentLectureUrl"]);
   const payload = {
     step,
     detail,
     url: location.href,
     frame: window === window.top ? "top" : "iframe",
-    courseQueue: store.courseQueue || [],
+    remainingLectures: (store.lectureQueue || []).length,
     learnedCount: (store.learnedLectures || []).length,
     currentLectureUrl: store.currentLectureUrl || "",
     ...extra,
@@ -87,344 +79,410 @@ const reportDebug = async (step, detail, extra = {}) => {
   await send("REPORT_DEBUG_STATE", { debugState: payload }).catch(() => {});
 };
 
-const safeClick = (el) => {
-  if (!el) return false;
-  el.scrollIntoView({ block: "center", behavior: "auto" });
-  el.click();
-  return true;
+const reportFrameMetric = async (kind, rect) => {
+  if (!rect) return;
+  await send("REPORT_FRAME_METRIC", { kind, rect }).catch(() => {});
 };
 
 const oncePer = (key, ms) => {
   const cacheKey = `hya:${key}`;
   const last = Number(sessionStorage.getItem(cacheKey) || "0");
-  if (now() - last < ms) return false;
-  sessionStorage.setItem(cacheKey, String(now()));
+  if (Date.now() - last < ms) return false;
+  sessionStorage.setItem(cacheKey, String(Date.now()));
   return true;
 };
 
-const parseCourseIdsFromDashboard = () => {
-  const cards = document.querySelectorAll("#DashboardCard_Container > div > div");
-  const ids = [];
-  cards.forEach((card) => {
-    const href = card.querySelector("a")?.getAttribute("href") || "";
-    const match = href.match(/\/courses\/(\d+)/);
-    if (match?.[1]) ids.push(match[1]);
-  });
-  return [...new Set(ids)];
+const safeClick = (element) => {
+  if (!element) return false;
+  element.scrollIntoView({ block: "center", behavior: "auto" });
+  element.click();
+  return true;
 };
 
-const parseCoursesFromEnv = () => {
-  try {
-    const list = window.ENV?.STUDENT_PLANNER_COURSES || [];
-    if (!Array.isArray(list) || list.length === 0) return [];
-    return list
-      .map((c) => {
-        const id = String(c.id || (c.href || "").match(/\/courses\/(\d+)/)?.[1] || "");
-        const name = c.shortName || c.courseCode || c.originalName || c.longName || "";
-        return id ? { id, name } : null;
-      })
-      .filter(Boolean);
-  } catch (e) {
-    return [];
+const rawClick = (element) => {
+  if (!element) return false;
+  element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+  element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  if (typeof element.click === "function") {
+    element.click();
   }
+  return true;
+};
+
+const queryVisible = (selectors) => {
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (!element) continue;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    if (style.display === "none" || style.visibility === "hidden") continue;
+    if (rect.width === 0 || rect.height === 0) continue;
+    return element;
+  }
+  return null;
+};
+
+const parseCanvasJson = (text) => {
+  const cleaned = text.replace(/^while\(1\);/, "");
+  return JSON.parse(cleaned);
+};
+
+const fetchJson = async (url) => {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    headers: { Accept: "application/json+canvas-string-ids, application/json" },
+  });
+  if (!response.ok) throw new Error(`${url} => ${response.status}`);
+  const text = await response.text();
+  return parseCanvasJson(text);
 };
 
 const fetchCoursesFromDashboardApi = async () => {
-  try {
-    const res = await fetch("/api/v1/dashboard/dashboard_cards", {
-      credentials: "same-origin",
-      headers: { Accept: "application/json+canvas-string-ids, application/json" },
-    });
-    if (!res.ok) return [];
-    const cards = await res.json();
-    if (!Array.isArray(cards)) return [];
-    return cards
-      .map((card) => {
-        const id = String(card.id || "");
-        const name = card.shortName || card.courseCode || card.originalName || "";
-        return id ? { id, name } : null;
-      })
-      .filter(Boolean);
-  } catch (e) {
-    return [];
-  }
+  const cards = await fetchJson("/api/v1/dashboard/dashboard_cards");
+  if (!Array.isArray(cards)) return [];
+  return cards
+    .map((card) => ({
+      id: String(card.id || ""),
+      name: card.shortName || card.courseCode || card.originalName || card.longName || "",
+    }))
+    .filter((course) => course.id);
 };
 
-const detectLoginPage = () => {
-  const uid = document.querySelector("#uid");
-  const upw = document.querySelector("#upw");
-  const loginBtn = document.querySelector("#login_btn");
-  const profile = document.querySelector("#global_nav_profile_link");
-  return Boolean(uid && upw && loginBtn && !profile);
-};
-
-const isDashboardPage = () => {
-  if (location.pathname.includes("/dashboard")) return true;
-  if (document.querySelector("#DashboardCard_Container")) return true;
-  if (document.querySelector("#dashboard.ic-dashboard-app")) return true;
-  return false;
-};
-
-const handleLoginIfNeeded = async (credentials) => {
-  if (!detectLoginPage()) return false;
-
-  const userId = credentials?.userId?.trim();
-  const password = credentials?.password || "";
-  const autoLogin = Boolean(credentials?.autoLogin);
-  if (!autoLogin || !userId || !password) {
-    await reportDebug("login_wait", "로그인 페이지 감지 (자동 입력 비활성/정보 없음)");
-    return false;
-  }
-  if (!oncePer("login_attempt", 8000)) return false;
-
-  const uid = document.querySelector("#uid");
-  const upw = document.querySelector("#upw");
-  const loginBtn = document.querySelector("#login_btn");
-  if (!uid || !upw || !loginBtn) return false;
-
-  uid.focus();
-  uid.value = userId;
-  uid.dispatchEvent(new Event("input", { bubbles: true }));
-  upw.focus();
-  upw.value = password;
-  upw.dispatchEvent(new Event("input", { bubbles: true }));
-
-  safeClick(loginBtn);
-  await reportDebug("login_attempt", "로그인 버튼 클릭");
-  return true;
-};
-
-const getCourseIdFromText = (text) => {
-  if (!text) return "";
-  return text.match(/\/courses\/(\d+)\/external_tools\/140/)?.[1] || "";
-};
-
-const parseLectureRows = (doc) => {
-  const rows = doc.querySelectorAll("#root > div > div > div > div:nth-child(2) > div");
+const fetchLectureItemsForCourse = async (courseId) => {
+  const modules = await fetchJson(`/api/v1/courses/${courseId}/modules?include[]=items&per_page=100`);
+  if (!Array.isArray(modules)) return [];
   const lectures = [];
-  rows.forEach((row) => {
-    const linkEl = row.querySelector(
-      "div > div.xnmb-module_item-left-wrapper > div > div.xnmb-module_item-meta_data-left-wrapper > div > a"
-    );
-    const title = linkEl?.textContent?.trim() || "";
-    const href = linkEl?.href || "";
-    const completedEl = row.querySelector(
-      "div > div.xnmb-module_item-right-wrapper > span.xnmb-module_item-completed.completed"
-    );
-    lectures.push({
-      title,
-      href,
-      completed: Boolean(completedEl),
-    });
-  });
+  for (const module of modules) {
+    for (const item of module.items || []) {
+      const contentId = String(item.content_id || "");
+      const externalUrl = item.external_url || "";
+      if (item.type !== "ExternalTool") continue;
+      if (contentId !== "138" && !externalUrl.includes("/learningx/lti/lecture_attendance/items/view/")) continue;
+      if (!item.html_url) continue;
+      lectures.push({
+        courseId,
+        moduleName: module.name || "",
+        title: item.title || "",
+        url: toAbsoluteLmsUrl(item.html_url),
+        externalUrl: toAbsoluteLmsUrl(externalUrl),
+        itemId: String(item.id || ""),
+      });
+    }
+  }
   return lectures;
 };
 
-const clickFirstUnlearnedLecture = async (doc, learnedLectures, sourceLabel) => {
-  const lectures = parseLectureRows(doc);
-  if (lectures.length === 0) return { status: "none", lectures };
-
-  const target = lectures.find((lec) => lec.href && !lec.completed && !learnedLectures.includes(lec.href));
-  if (!target) {
-    await reportDebug("course_done_check", `${sourceLabel}: 미수강 강의 없음`, { detectedLectures: lectures });
-    return { status: "empty", lectures };
+const discoverLectures = async () => {
+  const courses = await fetchCoursesFromDashboardApi();
+  const lectures = [];
+  for (const course of courses) {
+    const items = await fetchLectureItemsForCourse(course.id);
+    lectures.push(...items);
   }
-
-  const linkEl = Array.from(
-    doc.querySelectorAll(
-      "div > div.xnmb-module_item-left-wrapper > div > div.xnmb-module_item-meta_data-left-wrapper > div > a"
-    )
-  ).find((a) => a.href === target.href);
-
-  if (safeClick(linkEl)) {
-    await reportDebug("lecture_open", `${sourceLabel}: 강의 진입`, { detectedLectures: lectures, nextLectureUrl: target.href });
-    return { status: "clicked", lectures, lectureUrl: target.href };
-  }
-
-  return { status: "none", lectures };
+  return lectures;
 };
 
-const signalCourseFinishedIfNeeded = async (courseId, lectures = []) => {
-  if (courseId && oncePer(`course_finished:${courseId}`, 10000)) {
-    await send("COURSE_FINISHED", { courseId });
-    await reportDebug("course_finished", `과목 ${courseId} 완료`, { detectedLectures: lectures });
-    return true;
-  }
-  return false;
-};
+const isDashboardPage = () =>
+  location.hostname === LMS_HOST &&
+  (location.pathname === "/" ||
+    location.pathname.includes("/dashboard") ||
+    Boolean(document.querySelector("#DashboardCard_Container")));
 
-const tryReadLectureRowsFromIframe = async (learnedLectures) => {
-  const frame = document.querySelector("#tool_content");
-  if (!frame || !frame.contentDocument) return false;
+const isLecturePage = () => /\/courses\/\d+\/modules\/items\/\d+/.test(location.pathname);
 
-  const result = await clickFirstUnlearnedLecture(frame.contentDocument, learnedLectures, "top->tool_content");
-  if (result.status === "clicked") return true;
-  if (result.status === "empty") {
-    const courseId = getCourseIdFromText(location.href);
-    await signalCourseFinishedIfNeeded(courseId, result.lectures);
-    return true;
-  }
-  return false;
-};
-
-const lectureCompleteText = (text) => text && text.trim() === "완료";
-
-const handlePdfInFrame = async () => {
-  const completeSpan =
-    document.querySelector("#root > div > div.xnlail-pdf-component > div.xnbc-progress-info-container > span:nth-child(2)") ||
-    document.querySelector("#root > div > div.xnlail-pdf-component > div.xnvc-progress-info-container > span:nth-child(2)");
-
-  if (completeSpan && lectureCompleteText(completeSpan.textContent || "")) {
-    if (oncePer("lecture_complete_signal", 10000)) {
-      await send("LECTURE_COMPLETED");
-      await reportDebug("lecture_completed", "PDF 완료 상태 감지");
-    }
-    return true;
-  }
-
-  const progressButton = document.querySelector(
-    "#root > div > div.xnlail-pdf-component > div.xnvc-progress-info-container > button"
-  );
-  if (progressButton) {
-    safeClick(progressButton);
-    await reportDebug("pdf_progress_click", "PDF 진행 버튼 클릭");
-    return true;
-  }
-  return false;
-};
-
-const handleVideoInFrame = async () => {
-  const startBtn = document.querySelector(
-    "#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div"
-  );
-  const okBtn = document.querySelector(
-    "#confirm-dialog > div > div > div.confirm-btn-wrapper > div.confirm-ok-btn.confirm-btn"
-  );
-  const completeSpan = document.querySelector(
-    "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > span:nth-child(3)"
-  );
-  const progressButton = document.querySelector(
-    "#root > div > div.xnlail-video-component > div.xnvc-progress-info-container > button"
-  );
-
-  if (startBtn) {
-    safeClick(startBtn);
-    await reportDebug("video_start_click", "동영상 시작 버튼 클릭");
-    return true;
-  }
-  if (okBtn) {
-    safeClick(okBtn);
-    await reportDebug("video_resume_confirm", "이어보기 확인 클릭");
-    return true;
-  }
-  if (completeSpan && lectureCompleteText(completeSpan.textContent || "")) {
-    if (oncePer("lecture_complete_signal", 10000)) {
-      await send("LECTURE_COMPLETED");
-      await reportDebug("lecture_completed", "동영상 완료 상태 감지");
-    }
-    return true;
-  }
-  if (progressButton) {
-    safeClick(progressButton);
-    await reportDebug("video_progress_click", "동영상 진행 버튼 클릭");
-    return true;
-  }
-  return false;
-};
-
-const handleFrame = async (store) => {
-  if (!store.isRunning) return;
-  const learned = store.learnedLectures || [];
-
-  const lectureResult = await clickFirstUnlearnedLecture(document, learned, "iframe");
-  if (lectureResult.status === "clicked") return;
-  if (lectureResult.status === "empty") {
-    const courseId = getCourseIdFromText(location.href) || getCourseIdFromText(document.referrer);
-    await signalCourseFinishedIfNeeded(courseId, lectureResult.lectures);
-    return;
-  }
-
-  const handledPdf = await handlePdfInFrame();
-  if (handledPdf) return;
-  const handledVideo = await handleVideoInFrame();
-  if (handledVideo) return;
-
-  await reportDebug("frame_idle", "강의 목록/플레이어 요소 대기 중");
-};
+const isLoginPage = () => Boolean(document.querySelector("#uid") && document.querySelector("#login_btn"));
 
 const handleTopFrame = async (store) => {
-  if (!store.isRunning || location.hostname !== LMS_HOST) return;
+  if (location.hostname !== LMS_HOST) return;
 
-  const didLogin = await handleLoginIfNeeded(store.credentials || {});
-  if (didLogin) return;
-
-  if (isDashboardPage()) {
-    let courses = parseCoursesFromEnv();
-    if (courses.length === 0) {
-      const ids = parseCourseIdsFromDashboard();
-      courses = ids.map((id) => ({ id, name: "" }));
-    }
-    if (courses.length === 0) {
-      courses = await fetchCoursesFromDashboardApi();
-    }
-    const courseIds = courses.map((c) => c.id);
-
-    if (courseIds.length > 0 && oncePer("discover_courses", 7000)) {
-      await send("COURSES_DISCOVERED", { courses: courseIds });
-      await reportDebug("courses_discovered", `대시보드 과목 ${courseIds.length}개`, {
-        discoveredCourses: courses,
-      });
-    } else {
-      await reportDebug("dashboard_wait", "대시보드 과목 탐색 중");
-    }
+  if (isLoginPage()) {
+    await reportDebug("login_required", "로그인된 LMS 탭에서 시작해야 합니다.");
     return;
   }
 
-  const plainCourseMatch = location.href.match(/\/courses\/(\d+)\/?$/);
-  if (plainCourseMatch?.[1]) {
-    const nextUrl = `https://${LMS_HOST}/courses/${plainCourseMatch[1]}/external_tools/140`;
-    await reportDebug("redirect_external_tool", `과목 ${plainCourseMatch[1]} 도구 페이지로 이동`);
-    location.href = nextUrl;
-    return;
-  }
+  const lectureQueue = store.lectureQueue || [];
+  const current = lectureQueue[0];
 
-  const isToolPage = /\/courses\/\d+\/external_tools\/140/.test(location.href);
-  if (isToolPage) {
-    const handled = await tryReadLectureRowsFromIframe(store.learnedLectures || []);
-    if (!handled) {
-      await reportDebug("tool_page_wait", "tool_content iframe 로드 대기");
+  if (isDashboardPage() && lectureQueue.length === 0) {
+    if (!oncePer("discover_lectures", 10000)) {
+      await reportDebug("discover_wait", "강의 목록 수집 대기");
+      return;
+    }
+
+    try {
+      const lectures = await discoverLectures();
+      if (lectures.length === 0) {
+        await reportDebug("discover_empty", "수강 가능한 동영상 강의를 찾지 못했습니다.");
+        return;
+      }
+      await send("LECTURES_DISCOVERED", { lectures });
+      await reportDebug("lectures_discovered", `강의 ${lectures.length}개 수집`);
+    } catch (error) {
+      await reportDebug("discover_error", `강의 목록 수집 실패: ${error.message}`);
     }
     return;
   }
 
-  const isLikelyLecturePage =
-    !location.pathname.includes("/dashboard") &&
-    !location.pathname.includes("/external_tools/140") &&
-    !plainCourseMatch;
-  if (isLikelyLecturePage) {
-    await send("UPDATE_CURRENT_LECTURE_URL", { url: location.href });
-    await reportDebug("lecture_page_seen", "강의 상세 페이지 감지");
+  if (!current) {
+    await reportDebug("idle", "대기 중");
     return;
   }
 
-  await reportDebug("top_idle", "처리 대상 페이지 대기");
+  await send("UPDATE_CURRENT_LECTURE_URL", { url: current.url }).catch(() => {});
+
+  const toolFrame = document.querySelector('iframe[name="tool_content"]')?.getBoundingClientRect();
+  if (toolFrame) {
+    await reportFrameMetric("toolFrameRect", {
+      x: toolFrame.x,
+      y: toolFrame.y,
+      width: toolFrame.width,
+      height: toolFrame.height,
+    });
+  }
+
+  if (location.href !== current.url && (isDashboardPage() || !isLecturePage())) {
+    await reportDebug("navigate_next", `다음 강의로 이동: ${current.title || current.url}`);
+    location.href = current.url;
+    return;
+  }
+
+  if (isLecturePage()) {
+    if (oncePer(`lecture_page:${current.url}`, 15000)) {
+      await reportDebug("lecture_page", `강의 페이지 확인: ${current.title || current.url}`);
+    }
+    return;
+  }
+};
+
+const getAttendanceSnapshot = () => {
+  const refreshButton = Array.from(document.querySelectorAll("button")).find(
+    (button) => normalizeText(button.textContent) === "학습 상태 확인"
+  );
+  const parent = refreshButton?.parentElement || null;
+  const statusParts = parent
+    ? Array.from(parent.children)
+        .map((node) => normalizeText(node.textContent))
+        .filter(Boolean)
+        .filter((text) => text !== "학습 상태 확인")
+    : [];
+  const completed = statusParts.includes("완료");
+  const bodyText = normalizeText(document.body.innerText || "");
+  const nonVideo = !document.querySelector("iframe") && /교안|pdf|파일/i.test(bodyText);
+
+  return {
+    refreshButton,
+    statusParts,
+    completed,
+    nonVideo,
+    bodyText,
+  };
+};
+
+const handleAttendanceFrame = async () => {
+  const hycmsFrame = document.querySelector("iframe")?.getBoundingClientRect();
+  if (hycmsFrame) {
+    await reportFrameMetric("hycmsFrameRect", {
+      x: hycmsFrame.x,
+      y: hycmsFrame.y,
+      width: hycmsFrame.width,
+      height: hycmsFrame.height,
+    });
+  }
+
+  const snapshot = getAttendanceSnapshot();
+  if (snapshot.completed) {
+    if (oncePer(`lecture_completed:${location.href}`, 10000)) {
+      await send("LECTURE_COMPLETED", { lectureUrl: window.top.location.href }).catch(() => {});
+      await reportDebug("lecture_completed", "완료 상태 감지", { statusParts: snapshot.statusParts });
+    }
+    return;
+  }
+
+  if (snapshot.nonVideo) {
+    if (oncePer(`lecture_skipped:${location.href}`, 10000)) {
+      await send("LECTURE_SKIPPED", {
+        lectureUrl: window.top.location.href,
+        reason: "비디오가 아닌 항목으로 판단되어 스킵",
+      }).catch(() => {});
+      await reportDebug("lecture_skipped", "비디오가 아닌 항목 스킵");
+    }
+    return;
+  }
+
+  if (snapshot.refreshButton && oncePer(`refresh:${location.href}`, STATUS_REFRESH_MS)) {
+    safeClick(snapshot.refreshButton);
+    await reportDebug("status_refresh", `학습 상태 확인 클릭 (${snapshot.statusParts.join(" | ") || "-"})`);
+    return;
+  }
+
+  await reportDebug("attendance_wait", `학습 상태 대기 (${snapshot.statusParts.join(" | ") || "-"})`);
+};
+
+const findButtonByText = (text) =>
+  Array.from(document.querySelectorAll("button, [role='button'], div, span, a")).find(
+    (button) => normalizeText(button.textContent) === text
+  );
+
+const parsePlayerTime = (text) => {
+  const match = normalizeText(text).match(/(\d{1,2}):(\d{2})\s*\/\s*(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  return {
+    currentSeconds: Number(match[1]) * 60 + Number(match[2]),
+    totalSeconds: Number(match[3]) * 60 + Number(match[4]),
+  };
+};
+
+const getHycmsSnapshot = () => {
+  const timeText = normalizeText(document.querySelector(".vc-pctrl-play-time-text-area")?.textContent);
+  const timing = parsePlayerTime(timeText);
+  const frontScreenButton = queryVisible([
+    "#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div",
+    "#front-screen .vc-front-screen-btn-wrapper.video1-btn > div",
+    "#front-screen .vc-front-screen-btn-wrapper > div",
+    "#front-screen",
+  ]);
+  const playPauseButton = queryVisible([
+    "#play-controller .vc-pctrl-play-pause-btn",
+    ".vc-pctrl-play-pause-btn",
+    ".player-center-control-wrapper",
+    ".player-restart-btn",
+    ".vjs-big-play-button",
+  ]);
+  const player = queryVisible([
+    "#svp-video",
+    "#vp1-video1",
+    "#vp4-video1",
+    ".video-js",
+  ]);
+
+  return {
+    timeText,
+    timing,
+    frontScreenButton,
+    playPauseButton,
+    playPauseClass: document.querySelector(".vc-pctrl-play-pause-btn")?.className || "",
+    playerClass: player?.className || "",
+    mediaStates: Array.from(document.querySelectorAll("video, audio")).map((media, index) => ({
+      index,
+      paused: media.paused,
+      muted: media.muted,
+      currentTime: Number(media.currentTime || 0),
+      readyState: Number(media.readyState || 0),
+      tag: media.tagName,
+    })),
+  };
+};
+
+const wakeHycmsControls = () => {
+  const target = queryVisible([
+    "#viewer-root",
+    "#video-player-area",
+    ".vc-vplay-video1",
+    ".vc-vplay-video2",
+    ".vc-vplay-video3",
+    ".vc-vplay-video4",
+    "#play-controller",
+    "body",
+  ]);
+  if (!target) return false;
+  ["mousemove", "mouseenter", "mouseover"].forEach((type) => {
+    target.dispatchEvent(
+      new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: Math.max(20, Math.floor(window.innerWidth / 2)),
+        clientY: Math.max(20, Math.floor(window.innerHeight / 2)),
+      })
+    );
+  });
+  return true;
+};
+
+const handleHycmsFrame = async () => {
+  const resumeYes = findButtonByText("예");
+  if (resumeYes && oncePer(`resume:${location.href}`, 15000)) {
+    rawClick(resumeYes);
+    await reportDebug("resume_yes", "이어보기 확인 클릭");
+    return;
+  }
+
+  wakeHycmsControls();
+  const snapshot = getHycmsSnapshot();
+  const timeCacheKey = `hya:hycms-time:${location.href}`;
+  const prevSeconds = Number(sessionStorage.getItem(timeCacheKey) || "-1");
+  const currentSeconds = snapshot.timing?.currentSeconds ?? -1;
+  if (currentSeconds >= 0) {
+    sessionStorage.setItem(timeCacheKey, String(currentSeconds));
+  }
+
+  const timeAdvanced = currentSeconds >= 0 && prevSeconds >= 0 && currentSeconds > prevSeconds;
+  const playerLooksPlaying =
+    snapshot.playerClass.includes("vjs-playing") ||
+    snapshot.playPauseClass.includes("vc-pctrl-on-play") ||
+    snapshot.playPauseClass.includes("vc-pctrl-on-playing");
+  const playerLooksPaused =
+    snapshot.playerClass.includes("vjs-paused") || snapshot.playPauseClass.includes("vc-pctrl-on-pause");
+
+  if ((timeAdvanced || playerLooksPlaying) && !playerLooksPaused) {
+    await reportDebug("playing", `플레이어 재생 중 (${snapshot.timeText || "-"})`);
+    return;
+  }
+
+  if (snapshot.frontScreenButton && oncePer(`front-screen:${location.href}`, 10000)) {
+    const rect = snapshot.frontScreenButton.getBoundingClientRect();
+    const result = await send("CLICK_HYCMS_START", {
+      targetRect: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      },
+    }).catch(() => ({ ok: false, reason: "message_failed" }));
+
+    await reportDebug(
+      result?.ok ? "front_screen_clicked" : "front_screen_click_failed",
+      result?.ok ? "실좌표 시작 버튼 클릭" : `실좌표 클릭 실패 (${result?.reason || "unknown"})`
+    );
+    return;
+  }
+
+  if (snapshot.playPauseButton && oncePer(`play:${location.href}`, 10000)) {
+    rawClick(snapshot.playPauseButton);
+    await reportDebug(
+      "play_clicked",
+      `플레이어 재생 클릭 (${snapshot.timeText || snapshot.playPauseClass || "custom control"})`
+    );
+    return;
+  }
+
+  await reportDebug("player_wait", `플레이어 컨트롤 대기 (${snapshot.timeText || snapshot.playPauseClass || "-"})`, {
+    mediaStates: snapshot.mediaStates,
+  });
 };
 
 const tick = async () => {
   if (state.busy) return;
   state.busy = true;
   try {
-    const store = await getStore(["isRunning", "credentials", "learnedLectures"]);
+    const store = await getStore(["isRunning", "lectureQueue", "learnedLectures", "currentLectureUrl"]);
     if (!store.isRunning) return;
 
     if (window === window.top) {
       await handleTopFrame(store);
-    } else {
-      await handleFrame(store);
+      return;
     }
-  } catch (err) {
-    console.error("[HanyangAuto] tick error", err);
-    await sleep(500);
+
+    if (location.hostname === LMS_HOST && location.pathname.includes("/learningx/lti/lecture_attendance/items/view/")) {
+      await handleAttendanceFrame();
+      return;
+    }
+
+    if (location.hostname === HYCMS_HOST) {
+      await handleHycmsFrame();
+    }
+  } catch (error) {
+    console.error("[HanyangAuto] tick error", error);
   } finally {
     state.busy = false;
   }
@@ -436,10 +494,5 @@ tick();
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === "AUTOMATION_STARTED") {
     tick();
-    return;
-  }
-  if (message.action === "AUTOMATION_STOPPED" || message.action === "AUTOMATION_COMPLETED") {
-    sessionStorage.removeItem("hya:login_attempt");
-    sessionStorage.removeItem("hya:discover_courses");
   }
 });

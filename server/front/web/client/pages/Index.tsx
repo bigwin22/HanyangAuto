@@ -8,6 +8,7 @@ export default function Index() {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const navigate = useNavigate();
@@ -25,7 +26,8 @@ export default function Index() {
       return;
     }
     
-    // 실제 API로 로그인 요청
+    setIsSubmitting(true);
+
     try {
       const res = await fetch("/api/user/login", {
         method: "POST",
@@ -40,6 +42,8 @@ export default function Index() {
       }
     } catch {
       setError("서버 오류");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -130,16 +134,23 @@ export default function Index() {
 
           {error && <div className="text-red-500 text-sm">{error}</div>}
 
+          {isSubmitting && (
+            <div className="flex items-center gap-3 rounded-[12px] bg-[#E6F0FF] px-4 py-3 text-sm text-[#003366]">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#9BB5E6] border-t-[#003366]" />
+              <span>한양대학교 계정을 확인하고 있습니다. 보통 몇 초 안에 끝납니다.</span>
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={!agreedToTerms}
+            disabled={!agreedToTerms || isSubmitting}
             className={`w-full py-3 rounded-[12px] font-semibold text-[16px] transition-colors duration-200 max-sm:py-2 ${
-              agreedToTerms
+              agreedToTerms && !isSubmitting
                 ? "bg-[#003366] text-white hover:bg-[#002244]"
                 : "bg-[#D1D5DB] text-[#9CA3AF] cursor-not-allowed"
             }`}
           >
-            로그인
+            {isSubmitting ? "계정 확인 중..." : "로그인"}
           </button>
         </form>
         

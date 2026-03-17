@@ -22,26 +22,40 @@ if os.path.exists(ASSETS_DIST):
     app.mount("/assets", StaticFiles(directory=ASSETS_DIST), name="assets")
 
 BACKEND_URL = "back:9000"
+PROXY_TIMEOUT = httpx.Timeout(180.0)
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "DELETE"])
 async def proxy_api(request: Request, path: str):
     url = f"http://{BACKEND_URL}/api/{path}"
     headers = {key: value for key, value in request.headers.items() if key.lower() not in ('host', 'user-agent', 'content-length')}
 
-    async with httpx.AsyncClient() as client:
-        if request.method == "GET":
-            response = await client.get(url, headers=headers)
-        elif request.method == "POST":
-            content_type = request.headers.get('content-type')
-            if content_type and 'application/json' in content_type:
-                data = await request.json()
-                response = await client.post(url, json=data, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=PROXY_TIMEOUT) as client:
+            if request.method == "GET":
+                response = await client.get(url, headers=headers)
+            elif request.method == "POST":
+                content_type = request.headers.get('content-type')
+                if content_type and 'application/json' in content_type:
+                    data = await request.json()
+                    response = await client.post(url, json=data, headers=headers)
+                else:
+                    response = await client.post(url, headers=headers)
+            elif request.method == "DELETE":
+                response = await client.delete(url, headers=headers)
             else:
-                response = await client.post(url, headers=headers)
-        elif request.method == "DELETE":
-            response = await client.delete(url, headers=headers)
-        else:
-            return Response(status_code=405)
+                return Response(status_code=405)
+    except httpx.TimeoutException:
+        return Response(
+            content=json.dumps({"message": "계정 확인에 시간이 더 필요합니다. 잠시 후 다시 시도해주세요."}),
+            status_code=504,
+            media_type="application/json",
+        )
+    except httpx.RequestError:
+        return Response(
+            content=json.dumps({"message": "백엔드 서버에 연결하지 못했습니다."}),
+            status_code=502,
+            media_type="application/json",
+        )
 
     response_headers = {key: value for key, value in response.headers.items() if key.lower() not in ('content-encoding', 'transfer-encoding')}
     return Response(content=response.content, status_code=response.status_code, headers=response_headers)

@@ -1,8 +1,8 @@
 services:
   front:
     build:
-      context: .
-      dockerfile: front.Dockerfile
+      context: ..
+      dockerfile: docker/front.Dockerfile
     image: ${DOCKER_IMAGE}-front
     container_name: ${CONTAINER_NAME}_front
     restart: always
@@ -22,16 +22,16 @@ services:
 
   automation:
     build:
-      context: .
-      dockerfile: automation.Dockerfile
+      context: ..
+      dockerfile: docker/automation.Dockerfile
     image: ${DOCKER_IMAGE}-automation
     container_name: ${CONTAINER_NAME}_automation
     environment:
       - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
     restart: always
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ../data:/app/data
+      - ../logs:/app/logs
     networks:
       - hanyang-net
     depends_on:
@@ -43,16 +43,16 @@ services:
 
   back:
     build:
-      context: .
-      dockerfile: back.Dockerfile
+      context: ..
+      dockerfile: docker/back.Dockerfile
     image: ${DOCKER_IMAGE}-back
     container_name: ${CONTAINER_NAME}_back
     restart: always
     environment:
       - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - ../data:/app/data
+      - ../logs:/app/logs
     networks:
       - hanyang-net
     user: "1000:1000"

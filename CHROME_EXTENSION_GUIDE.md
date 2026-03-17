@@ -11,7 +11,7 @@
 
 ## 2. Python 로직과의 1:1 대응
 
-기존 Python(`automation/automation.py`)의 핵심 함수를 다음처럼 대응시켰습니다.
+기존 Python([automation.py](/Users/kth88/Documents/CODING/HanyangAuto/server/automation/automation.py))의 핵심 함수를 다음처럼 대응시켰습니다.
 
 1. `login(...)`
 - 팝업에 저장한 계정으로 로그인 페이지(`#uid`, `#upw`, `#login_btn`) 자동 입력/클릭

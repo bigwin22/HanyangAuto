@@ -88,6 +88,19 @@ async def trigger_user_automation(user_id: str):
         logger = HanyangLogger('system')
         logger.error('automation', f'Error triggering automation for user {user_id}: {e}')
 
+
+async def verify_user_credentials(user_id: str, password: str):
+    """
+    Verify LMS credentials via the automation service before saving them.
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{RECEIVE_SERVER_URL}/verify-login",
+            json={"userId": user_id, "password": password},
+            timeout=30.0
+        )
+        return response
+
 cors_origins = os.getenv("CORS_ALLOW_ORIGINS")
 if cors_origins:
     allow_origins = [o.strip() for o in cors_origins.split(',') if o.strip()]
@@ -134,6 +147,29 @@ async def user_login(req: UserLoginRequest):
     
     import asyncio
     loop = asyncio.get_running_loop()
+
+    try:
+        verification_response = await verify_user_credentials(req.userId, req.password)
+    except Exception as e:
+        logger.error('user', f'계정 검증 요청 실패: {req.userId}: {e}')
+        user_logger.error('user', f'계정 검증 요청 실패: {e}')
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"message": "한양 LMS 계정 확인 서버에 연결하지 못했습니다. 잠시 후 다시 시도해주세요."},
+        )
+
+    verification_payload = verification_response.json()
+    if verification_response.status_code != 200:
+        message = verification_payload.get("message") or "아이디 또는 비밀번호가 올바르지 않습니다."
+        logger.info('user', f'계정 검증 실패: {req.userId}')
+        user_logger.info('user', f'계정 검증 실패: {message}')
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"message": message},
+        )
+
+    logger.info('user', f'계정 검증 성공: {req.userId}')
+    user_logger.info('user', '계정 검증 성공')
 
     user = await loop.run_in_executor(None, db.get_user_by_id, req.userId)
     is_new_user = False

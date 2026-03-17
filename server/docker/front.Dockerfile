@@ -1,13 +1,12 @@
 # Stage 1: Build the React app
-FROM node:18-slim as builder
+FROM node:18-slim AS builder
 
 WORKDIR /app
 
-# Copy the rest of the web app source
 COPY front/web/ ./
 
-RUN npm install
-RUN npm run build:client # only build client
+RUN npm ci
+RUN npm run build:client
 
 # Stage 2: Serve the frontend with FastAPI
 FROM python:3.12-slim
@@ -18,14 +17,11 @@ WORKDIR /app
 COPY front/requirements.txt ./
 RUN pip install --no-cache-dir -r ./requirements.txt
 
-# Copy application code
 COPY front/main.py ./
-
-# Copy built React app from builder stage
-COPY --from=builder /app/ ./web/
+COPY --from=builder /app/dist/spa ./web/dist/spa
+COPY front/web/client/public ./web/client/public
 COPY utils/ ./utils/
 
-# Non-root user
 RUN useradd -m -u 1000 appuser
 USER appuser
 
