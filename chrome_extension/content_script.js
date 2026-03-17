@@ -279,6 +279,18 @@ const getAttendanceSnapshot = () => {
   };
 };
 
+const isScheduledLecture = (snapshot) => {
+  const combined = [...(snapshot.statusParts || []), snapshot.bodyText || ""].join(" ");
+  return [
+    "학습이 가능합니다",
+    "부터 학습이 가능합니다",
+    "학습 예정",
+    "오픈 예정",
+    "수강 예정",
+    "아직 학습할 수 없습니다",
+  ].some((marker) => combined.includes(marker));
+};
+
 const handleAttendanceFrame = async () => {
   const hycmsFrame = document.querySelector("iframe")?.getBoundingClientRect();
   if (hycmsFrame) {
@@ -291,6 +303,18 @@ const handleAttendanceFrame = async () => {
   }
 
   const snapshot = getAttendanceSnapshot();
+  if (isScheduledLecture(snapshot)) {
+    if (oncePer(`lecture_scheduled:${location.href}`, 10000)) {
+      await send("LECTURE_SKIPPED", {
+        lectureUrl: window.top.location.href,
+        reason: "학습 예정 강의로 판단되어 스킵",
+        markProcessed: false,
+      }).catch(() => {});
+      await reportDebug("lecture_scheduled", "학습 예정 강의 스킵", { statusParts: snapshot.statusParts });
+    }
+    return;
+  }
+
   if (snapshot.completed) {
     if (oncePer(`lecture_completed:${location.href}`, 10000)) {
       await send("LECTURE_COMPLETED", { lectureUrl: window.top.location.href }).catch(() => {});

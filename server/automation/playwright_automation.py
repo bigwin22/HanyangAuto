@@ -18,6 +18,7 @@ MODULES_API = "/api/v1/courses/{course_id}/modules?include[]=items&per_page=100"
 
 DISCOVERY_TIMEOUT_MS = 20_000
 LECTURE_LOAD_TIMEOUT_MS = 30_000
+FRAME_URL_WAIT_TIMEOUT_MS = 20_000
 STATUS_POLL_INTERVAL_SEC = 5
 STATUS_REFRESH_INTERVAL_SEC = 45
 POST_REFRESH_WAIT_SEC = 3
@@ -145,6 +146,21 @@ def _parse_duration_seconds(texts: Iterable[str]) -> int:
     return DEFAULT_DURATION_SEC
 
 
+def _is_scheduled_lecture(snapshot: Dict[str, Any]) -> bool:
+    body_text = str(snapshot.get("bodyText") or "")
+    status_parts = [str(part or "") for part in snapshot.get("statusParts") or []]
+    combined = " ".join(status_parts + [body_text])
+    markers = [
+        "학습이 가능합니다",
+        "부터 학습이 가능합니다",
+        "학습 예정",
+        "오픈 예정",
+        "수강 예정",
+        "아직 학습할 수 없습니다",
+    ]
+    return any(marker in combined for marker in markers)
+
+
 def _read_attendance_snapshot(frame: Frame) -> Dict[str, Any]:
     return frame.evaluate(
         """() => {
@@ -161,12 +177,14 @@ def _read_attendance_snapshot(frame: Frame) -> Dict[str, Any]:
           const bodyText = normalize(document.body?.innerText || "");
           const completed = statusParts.includes("완료") || bodyText.includes("학습 진행 상태: 완료");
           const nonVideoHints = ["교안", "pdf", "파일"].some((token) => bodyText.toLowerCase().includes(token));
+          const hycmsFrame = document.querySelector('iframe[src*="hycms.hanyang.ac.kr"]');
           return {
             statusParts,
             bodyText,
             completed,
             hasRefreshButton: Boolean(refreshButton),
             hasInnerFrame: Boolean(document.querySelector("iframe")),
+            hycmsSrc: hycmsFrame?.getAttribute("src") || "",
             nonVideoHints,
           };
         }"""
@@ -184,6 +202,120 @@ def _find_hycms_frame(page: Page) -> Optional[Frame]:
     return None
 
 
+def _decode_html_url(url: str) -> str:
+    return (
+        url.replace("&amp;", "&")
+        .replace("&#38;", "&")
+        .replace("&quot;", '"')
+        .replace("&#34;", '"')
+    )
+
+
+def _wait_for_hycms_frame(page: Page, attendance_frame: Optional[Frame], timeout_ms: int) -> Optional[Frame]:
+    deadline = time.time() + (timeout_ms / 1000)
+    while time.time() < deadline:
+        frame = _find_hycms_frame(page)
+        if frame:
+            return frame
+        if attendance_frame:
+            try:
+                snapshot = _read_attendance_snapshot(attendance_frame)
+                hycms_src = _decode_html_url(snapshot.get("hycmsSrc") or "")
+                if hycms_src:
+                    page.wait_for_timeout(500)
+            except Exception:
+                pass
+        time.sleep(0.5)
+    return _find_hycms_frame(page)
+
+
+def _wait_for_frame_url(page: Page, finder: Callable[[Page], Optional[Frame]], predicate: Callable[[str], bool], timeout_ms: int) -> Optional[Frame]:
+    deadline = time.time() + (timeout_ms / 1000)
+    while time.time() < deadline:
+        frame = finder(page)
+        if frame and predicate(frame.url or ""):
+            return frame
+        time.sleep(0.5)
+    return finder(page)
+
+
+def _read_hycms_snapshot(page: Page, attendance_frame: Optional[Frame] = None) -> Dict[str, Any]:
+    hycms = _wait_for_hycms_frame(page, attendance_frame, 5_000)
+    if not hycms:
+        return {"available": False}
+    try:
+        return hycms.evaluate(
+            """() => {
+              const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
+              const parseTime = (text) => {
+                const match = normalize(text).match(/(\\d{1,2}):(\\d{2})\\s*\\/\\s*(\\d{1,2}):(\\d{2})/);
+                if (!match) return null;
+                return {
+                  currentSeconds: Number(match[1]) * 60 + Number(match[2]),
+                  totalSeconds: Number(match[3]) * 60 + Number(match[4]),
+                };
+              };
+              const queryVisible = (selectors) => {
+                for (const selector of selectors) {
+                  const element = document.querySelector(selector);
+                  if (!element) continue;
+                  const rect = element.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) return { selector, text: normalize(element.textContent), rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
+                }
+                return null;
+              };
+
+              const timeText = normalize(document.querySelector(".vc-pctrl-play-time-text-area")?.textContent);
+              return {
+                available: true,
+                url: location.href,
+                title: document.title,
+                timeText,
+                timing: parseTime(timeText),
+                frontScreen: queryVisible([
+                  "#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div",
+                  "#front-screen .vc-front-screen-btn-wrapper.video1-btn > div",
+                  "#front-screen .vc-front-screen-btn-wrapper > div",
+                  "#front-screen",
+                ]),
+                playPause: queryVisible([
+                  "#play-controller .vc-pctrl-play-pause-btn",
+                  ".vc-pctrl-play-pause-btn",
+                  ".player-center-control-wrapper",
+                  ".player-restart-btn",
+                  ".vjs-big-play-button",
+                ]),
+                playPauseClass: document.querySelector(".vc-pctrl-play-pause-btn")?.className || "",
+                playerClass: document.querySelector("#svp-video, #vp1-video1, #vp4-video1, .video-js")?.className || "",
+                mediaStates: Array.from(document.querySelectorAll("video, audio")).map((media, index) => ({
+                  index,
+                  paused: !!media.paused,
+                  ended: !!media.ended,
+                  muted: !!media.muted,
+                  currentTime: Number(media.currentTime || 0),
+                  duration: Number(media.duration || 0),
+                  readyState: Number(media.readyState || 0),
+                })),
+              };
+            }"""
+        )
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
+
+
+def _click_selector(frame: Frame, selector: str) -> bool:
+    locator = frame.locator(selector).first
+    if locator.count() == 0:
+        return False
+    try:
+        locator.click(timeout=2_000, force=True)
+        return True
+    except PlaywrightTimeoutError:
+        return False
+    except Exception:
+        return False
+
+
 def _click_if_visible(frame: Frame, text: str) -> bool:
     locator = _find_button_by_text(frame, text)
     if locator.count() == 0:
@@ -195,38 +327,176 @@ def _click_if_visible(frame: Frame, text: str) -> bool:
         return False
 
 
-def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
-    hycms = _find_hycms_frame(page)
-    if not hycms:
+def _click_resume_prompt(frame: Frame) -> bool:
+    try:
+        return bool(
+            frame.evaluate(
+                r'''() => {
+                  const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+                  const preferred = document.querySelector('.confirm-ok-btn.confirm-btn');
+                  if (preferred) {
+                    const rect = preferred.getBoundingClientRect();
+                    const style = window.getComputedStyle(preferred);
+                    if (rect.width === 0 || rect.height === 0) return false;
+                    if (style.display === 'none' || style.visibility === 'hidden') return false;
+                    ['mousedown', 'mouseup', 'click'].forEach((type) => {
+                      preferred.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+                    });
+                    if (typeof preferred.click === 'function') preferred.click();
+                    return true;
+                  }
+                  const candidates = Array.from(document.querySelectorAll('button, [role="button"], a, div, span'));
+                  const target = candidates.find((element) => {
+                    const rect = element.getBoundingClientRect();
+                    const style = window.getComputedStyle(element);
+                    if (rect.width === 0 || rect.height === 0) return false;
+                    if (style.display === 'none' || style.visibility === 'hidden') return false;
+                    const text = normalize(element.textContent);
+                    const title = normalize(element.getAttribute('title'));
+                    return text === '예' || title === '예' || text.includes('이어') || title.includes('이어');
+                  });
+                  if (!target) return false;
+                  ['mousedown', 'mouseup', 'click'].forEach((type) => {
+                    target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+                  });
+                  if (typeof target.click === 'function') target.click();
+                  return true;
+                }'''
+            )
+        )
+    except Exception:
         return False
 
-    if _click_if_visible(hycms, "예"):
-        logger.info("playback", "resume prompt accepted")
+
+def _accept_resume_prompt(page: Page, attendance_frame: Optional[Frame], logger: HanyangLogger, wait_ms: int = 6_000) -> bool:
+    deadline = time.time() + (wait_ms / 1000)
+    while time.time() < deadline:
+        hycms = _wait_for_hycms_frame(page, attendance_frame, 1_000)
+        if hycms and (_click_if_visible(hycms, "예") or _click_resume_prompt(hycms)):
+            logger.info("playback", "resume prompt accepted")
+            time.sleep(1)
+            after = _read_hycms_snapshot(page, attendance_frame)
+            logger.info("playback", f"snapshot after resume | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def _resume_prompt_visible(page: Page, attendance_frame: Optional[Frame]) -> bool:
+    hycms = _wait_for_hycms_frame(page, attendance_frame, 1_000)
+    if not hycms:
+        return False
+    try:
+        return bool(
+            hycms.evaluate(
+                """() => {
+                  const dialog = document.querySelector('#confirm-dialog, .confirm-dialog-wrapper, .confirm-msg-box');
+                  if (!dialog) return false;
+                  const rect = dialog.getBoundingClientRect();
+                  const style = window.getComputedStyle(dialog);
+                  return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+                }"""
+            )
+        )
+    except Exception:
+        return False
+
+
+def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
+    attendance_frame = _find_attendance_frame(page)
+    hycms = _wait_for_hycms_frame(page, attendance_frame, 10_000)
+    if not hycms:
+        fallback_snapshot = _read_attendance_snapshot(attendance_frame) if attendance_frame else {}
+        logger.info("playback", f"hycms frame not found | hycmsSrc={fallback_snapshot.get('hycmsSrc') or '-'}")
+        return False
+
+    before = _read_hycms_snapshot(page, attendance_frame)
+    logger.info(
+        "playback",
+        f"snapshot before play | time={before.get('timeText') or '-'} | media={before.get('mediaStates')} | "
+        f"front={before.get('frontScreen', {}).get('selector') if isinstance(before.get('frontScreen'), dict) else '-'} | "
+        f"play={before.get('playPause', {}).get('selector') if isinstance(before.get('playPause'), dict) else '-'}",
+    )
+
+    if _resume_prompt_visible(page, attendance_frame) and _accept_resume_prompt(page, attendance_frame, logger, wait_ms=1_000):
         return True
+
+    for selector in [
+        "#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div",
+        "#front-screen .vc-front-screen-btn-wrapper.video1-btn > div",
+        "#front-screen .vc-front-screen-btn-wrapper > div",
+        "#front-screen",
+    ]:
+        if _click_selector(hycms, selector):
+            logger.info("playback", f"front-screen selector clicked: {selector}")
+            time.sleep(1)
+            if _accept_resume_prompt(page, attendance_frame, logger):
+                return True
+            after = _read_hycms_snapshot(page, attendance_frame)
+            logger.info("playback", f"snapshot after front-screen click | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
+            return True
 
     if _click_if_visible(hycms, "재생"):
         logger.info("playback", "play button clicked")
+        time.sleep(1)
+        after = _read_hycms_snapshot(page, attendance_frame)
+        logger.info("playback", f"snapshot after text play click | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
+        return True
+
+    for selector in [
+        "#play-controller .vc-pctrl-play-pause-btn",
+        ".vc-pctrl-play-pause-btn",
+        ".player-center-control-wrapper",
+        ".player-restart-btn",
+        ".vjs-big-play-button",
+    ]:
+        if _click_selector(hycms, selector):
+            logger.info("playback", f"play control selector clicked: {selector}")
+            time.sleep(1)
+            if _accept_resume_prompt(page, attendance_frame, logger):
+                return True
+            after = _read_hycms_snapshot(page, attendance_frame)
+            logger.info("playback", f"snapshot after control click | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
+            return True
+
+    after = _read_hycms_snapshot(page, attendance_frame)
+    if any((media.get("currentTime") or 0) > 0 and not media.get("paused", True) for media in after.get("mediaStates") or []):
+        logger.info("playback", f"player already progressing | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
         return True
 
     if _find_button_by_text(hycms, "일시정지").count() > 0:
-        logger.info("playback", "player already running")
+        logger.info("playback", f"player already running | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
         return True
 
+    logger.info("playback", f"playback start failed | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
     return False
 
 
 def _refresh_status(frame: Frame, logger: HanyangLogger) -> None:
+    before = _read_attendance_snapshot(frame)
     button = _find_button_by_text(frame, "학습 상태 확인")
     if button.count() == 0:
         return
     button.click(timeout=5_000)
-    logger.info("progress", "status refresh clicked")
     time.sleep(POST_REFRESH_WAIT_SEC)
+    after = _read_attendance_snapshot(frame)
+    logger.info(
+        "progress",
+        "status refresh clicked | "
+        f"before={before['statusParts'] or ['(empty)']} | "
+        f"after={after['statusParts'] or ['(empty)']} | "
+        f"completed={after['completed']}",
+    )
 
 
 def _wait_for_attendance_frame(page: Page) -> Frame:
     page.wait_for_selector('iframe[name="tool_content"]', timeout=LECTURE_LOAD_TIMEOUT_MS)
-    frame = _find_attendance_frame(page)
+    frame = _wait_for_frame_url(
+        page,
+        _find_attendance_frame,
+        lambda url: bool(url) and url != "about:blank" and "learningx" in url,
+        FRAME_URL_WAIT_TIMEOUT_MS,
+    )
     if not frame:
         raise RuntimeError("tool_content frame not found")
     frame.wait_for_load_state("domcontentloaded", timeout=LECTURE_LOAD_TIMEOUT_MS)
@@ -331,6 +601,9 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     attendance_frame = _wait_for_attendance_frame(page)
 
     initial = _read_attendance_snapshot(attendance_frame)
+    if _is_scheduled_lecture(initial):
+        logger.info("lecture", f"scheduled lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+        return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
     if initial["completed"]:
         logger.info("lecture", f"already completed: {lecture.title}")
         return {"learn": True, "msg": "already completed"}
@@ -343,6 +616,9 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
             _refresh_status(attendance_frame, logger)
             attendance_frame = _wait_for_attendance_frame(page)
             initial = _read_attendance_snapshot(attendance_frame)
+            if _is_scheduled_lecture(initial):
+                logger.info("lecture", f"scheduled lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+                return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
             if initial["completed"]:
                 logger.info("lecture", f"already completed after sync: {lecture.title}")
                 return {"learn": True, "msg": "already completed after sync"}
@@ -355,18 +631,42 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     )
     deadline = time.time() + min(int(duration_sec * 1.2) + 180, MAX_LECTURE_RUNTIME_SEC)
     last_refresh = 0.0
+    last_media_second: Optional[float] = None
 
     logger.info("lecture", f"playback started: {lecture.title}")
 
     while time.time() < deadline:
         attendance_frame = _wait_for_attendance_frame(page)
         snapshot = _read_attendance_snapshot(attendance_frame)
+        if _is_scheduled_lecture(snapshot):
+            logger.info("lecture", f"scheduled lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
+            return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
         if snapshot["completed"]:
             logger.info("lecture", f"completed: {lecture.title}")
             return {"learn": True, "msg": "completed"}
 
         if snapshot["hasInnerFrame"]:
             _ensure_playing(page, logger)
+            media_snapshot = _read_hycms_snapshot(page, attendance_frame)
+            media_times = [float(media.get("currentTime") or 0) for media in media_snapshot.get("mediaStates") or []]
+            current_media_second = max(media_times) if media_times else None
+            if current_media_second is not None:
+                if last_media_second is not None and current_media_second > last_media_second + 0.5:
+                    logger.info(
+                        "playback",
+                        f"playback progressing | lecture={lecture.title} | second={current_media_second:.1f} | time={media_snapshot.get('timeText') or '-'}",
+                    )
+                elif last_media_second is not None and current_media_second <= last_media_second + 0.1:
+                    logger.info(
+                        "playback",
+                        f"playback stalled | lecture={lecture.title} | second={current_media_second:.1f} | time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
+                    )
+                else:
+                    logger.info(
+                        "playback",
+                        f"playback initial media state | lecture={lecture.title} | second={current_media_second:.1f} | time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
+                    )
+                last_media_second = current_media_second
         elif snapshot["nonVideoHints"]:
             logger.info("lecture", f"non-video item treated as processed: {lecture.title}")
             return {"learn": True, "msg": "non-video attendance item"}
@@ -429,7 +729,8 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_
                     "msg": f"강의 처리 실패: {lecture.title} ({result.get('msg', '')})",
                     "learned": learned,
                 }
-            _mark_processed(lecture, learned, learned_set, db_add_learned, user_id)
+            if result.get("mark_processed", True):
+                _mark_processed(lecture, learned, learned_set, db_add_learned, user_id)
 
         update_user_status(user_id, "completed")
         return {"success": True, "msg": f"{len(learned)}개 강의 처리 완료", "learned": learned}

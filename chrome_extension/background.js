@@ -247,7 +247,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       const currentUrl = message.lectureUrl || store.currentLectureUrl;
-      const learned = [...new Set([...(store.learnedLectures || []), currentUrl].filter(Boolean))];
+      const shouldMarkProcessed = action === "LECTURE_COMPLETED" || message.markProcessed !== false;
+      const learned = shouldMarkProcessed
+        ? [...new Set([...(store.learnedLectures || []), currentUrl].filter(Boolean))]
+        : store.learnedLectures || [];
       const nextQueue = (store.lectureQueue || []).filter((lecture) => lecture?.url !== currentUrl);
 
       await setStore({
@@ -260,6 +263,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               ? "강의 완료 처리"
               : message.reason || "비디오가 아니거나 처리 불가 항목 스킵",
           lectureUrl: currentUrl || "",
+          markProcessed: shouldMarkProcessed,
           updatedAt: Date.now(),
         },
       });
