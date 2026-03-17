@@ -6,6 +6,7 @@ const STATUS_REFRESH_MS = 45000;
 const state = {
   busy: false,
   panelMounted: false,
+  debugPanelEnabled: false,
 };
 
 const getStore = (keys) => chrome.storage.local.get(keys);
@@ -19,7 +20,7 @@ const toAbsoluteLmsUrl = (value) => {
 };
 
 const ensureDebugPanel = () => {
-  if (state.panelMounted || window !== window.top) return;
+  if (!state.debugPanelEnabled || state.panelMounted || window !== window.top) return;
   const panel = document.createElement("div");
   panel.id = "hanyang-auto-debug-panel";
   panel.style.cssText = [
@@ -45,7 +46,25 @@ const ensureDebugPanel = () => {
   state.panelMounted = true;
 };
 
+const removeDebugPanel = () => {
+  const panel = document.getElementById("hanyang-auto-debug-panel");
+  if (panel) panel.remove();
+  state.panelMounted = false;
+};
+
+const syncDebugPanelEnabled = async () => {
+  const store = await getStore(["showDebugPanel"]);
+  state.debugPanelEnabled = Boolean(store.showDebugPanel);
+  if (!state.debugPanelEnabled) {
+    removeDebugPanel();
+  }
+};
+
 const renderDebugPanel = (data) => {
+  if (!state.debugPanelEnabled) {
+    removeDebugPanel();
+    return;
+  }
   ensureDebugPanel();
   const panel = document.getElementById("hanyang-auto-debug-panel");
   if (!panel) return;
@@ -531,10 +550,22 @@ const tick = async () => {
 };
 
 setInterval(tick, TICK_MS);
-tick();
+syncDebugPanelEnabled().then(() => {
+  tick();
+});
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === "AUTOMATION_STARTED") {
     tick();
   }
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !changes.showDebugPanel) return;
+  state.debugPanelEnabled = Boolean(changes.showDebugPanel.newValue);
+  if (!state.debugPanelEnabled) {
+    removeDebugPanel();
+    return;
+  }
+  tick();
 });

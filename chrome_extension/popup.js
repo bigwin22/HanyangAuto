@@ -2,6 +2,7 @@ const statusDiv = document.getElementById("status");
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const resetLearnedInput = document.getElementById("resetLearned");
+const showDebugPanelInput = document.getElementById("showDebugPanel");
 const debugDiv = document.getElementById("debug");
 
 const queryActiveTab = () =>
@@ -23,6 +24,7 @@ const updateStatus = async () => {
     : `대기 중 | 처리 완료 ${learnedLen}개`;
 
   const dbg = state.debugState || {};
+  showDebugPanelInput.checked = Boolean(state.showDebugPanel);
   debugDiv.innerText = [
     `step: ${dbg.step || "-"}`,
     `detail: ${dbg.detail || dbg.message || "-"}`,
@@ -55,6 +57,18 @@ stopBtn.addEventListener("click", async () => {
   }
 
   await sendToBackground({ action: "STOP_AUTOMATION" });
+  await updateStatus();
+});
+
+showDebugPanelInput.addEventListener("change", async () => {
+  const result = await sendToBackground({
+    action: "SET_DEBUG_PANEL",
+    enabled: showDebugPanelInput.checked,
+  });
+  if (!result?.ok) {
+    statusDiv.innerText = "디버그 패널 설정 저장 실패";
+    return;
+  }
   await updateStatus();
 });
 

@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   CURRENT_LECTURE_URL: "currentLectureUrl",
   DEBUG_STATE: "debugState",
   FRAME_METRICS: "frameMetrics",
+  SHOW_DEBUG_PANEL: "showDebugPanel",
 };
 
 const LMS_ORIGIN = "https://learning.hanyang.ac.kr";
@@ -114,6 +115,7 @@ chrome.runtime.onInstalled.addListener(async () => {
     STORAGE_KEYS.CURRENT_LECTURE_URL,
     STORAGE_KEYS.DEBUG_STATE,
     STORAGE_KEYS.FRAME_METRICS,
+    STORAGE_KEYS.SHOW_DEBUG_PANEL,
   ]);
   await setStore({
     [STORAGE_KEYS.IS_RUNNING]: false,
@@ -122,6 +124,7 @@ chrome.runtime.onInstalled.addListener(async () => {
     [STORAGE_KEYS.CURRENT_LECTURE_URL]: current.currentLectureUrl || "",
     [STORAGE_KEYS.DEBUG_STATE]: current.debugState || {},
     [STORAGE_KEYS.FRAME_METRICS]: current.frameMetrics || {},
+    [STORAGE_KEYS.SHOW_DEBUG_PANEL]: Boolean(current.showDebugPanel),
   });
 });
 
@@ -350,8 +353,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         STORAGE_KEYS.CURRENT_LECTURE_URL,
         STORAGE_KEYS.DEBUG_STATE,
         STORAGE_KEYS.FRAME_METRICS,
+        STORAGE_KEYS.SHOW_DEBUG_PANEL,
       ]);
       sendResponse({ ok: true, ...store });
+      return;
+    }
+
+    if (action === "SET_DEBUG_PANEL") {
+      await setStore({
+        [STORAGE_KEYS.SHOW_DEBUG_PANEL]: Boolean(message.enabled),
+      });
+      sendResponse({ ok: true, enabled: Boolean(message.enabled) });
       return;
     }
 
