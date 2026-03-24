@@ -10,3 +10,4 @@ __pycache__/
 /data
 /server/data
 /server/logs
+.DS_Store

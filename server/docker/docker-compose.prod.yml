@@ -1,0 +1,61 @@
+services:
+  front:
+    image: ghcr.io/${GHCR_OWNER}/hanyangauto-front:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME}_front
+    restart: always
+    networks:
+      - hanyang-net
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hanyang-automation.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.hanyang-automation.entrypoints=web,websecure"
+      - "traefik.http.routers.hanyang-automation.tls.certresolver=letsencrypt"
+      - "traefik.http.services.hanyang-automation.loadbalancer.server.port=${PORT}"
+    depends_on:
+      - back
+    ports:
+      - ${PORT:-8000}:8000
+
+  automation:
+    image: ghcr.io/${GHCR_OWNER}/hanyangauto-automation:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME}_automation
+    environment:
+      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
+    restart: always
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+    networks:
+      - hanyang-net
+    depends_on:
+      - back
+    user: "1000:1000"
+    expose:
+      - "7000"
+    platform: linux/amd64
+
+  back:
+    image: ghcr.io/${GHCR_OWNER}/hanyangauto-back:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME}_back
+    restart: always
+    environment:
+      - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
+      - SESSION_SECRET_B64=${SESSION_SECRET_B64}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD}
+      - RECEIVE_SERVER_URL=${RECEIVE_SERVER_URL}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+    networks:
+      - hanyang-net
+    user: "1000:1000"
+    expose:
+      - "9000"
+
+networks:
+  hanyang-net:
+    driver: bridge
+  traefik-net:
+    external: true
