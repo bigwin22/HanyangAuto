@@ -92,4 +92,50 @@ docker compose -f server/docker/docker-compose.yml up back automation
 
 Playwright Chromium 설치가 포함된 자동화 이미지는 [automation.Dockerfile](/Users/kth88/Documents/CODING/HanyangAuto/server/docker/automation.Dockerfile)입니다.
 
+## Private GHCR 기반 배포
+
+운영 배포는 GitHub Actions가 이미지를 빌드해서 private GHCR로 올리고, 서버는 이미지를 pull해서 재시작만 하도록 구성되어 있습니다.
+
+### 추가된 파일
+
+- [ci.yml](/Users/kth88/Documents/CODING/HanyangAuto/.github/workflows/ci.yml)
+- [deploy.yml](/Users/kth88/Documents/CODING/HanyangAuto/.github/workflows/deploy.yml)
+- [docker-compose.prod.yml](/Users/kth88/Documents/CODING/HanyangAuto/server/docker/docker-compose.prod.yml)
+- [deploy.sh](/Users/kth88/Documents/CODING/HanyangAuto/server/docker/deploy.sh)
+
+### GitHub Secrets
+
+- `CF_ACCESS_CLIENT_ID`
+- `CF_ACCESS_CLIENT_SECRET`
+- `SSH_PRIVATE_KEY`
+- `SERVER_HOST`
+- `SERVER_USER`
+- `SERVER_APP_PATH`
+- `GHCR_USERNAME`
+- `GHCR_TOKEN`
+
+### 서버 .env 추가 값
+
+운영 서버의 `.env`에는 기존 값 외에도 아래가 필요합니다.
+
+- `GHCR_OWNER`
+- `GHCR_USERNAME`
+- `GHCR_TOKEN`
+- `IMAGE_TAG`
+
+### 운영 배포 흐름
+
+1. `main` 브랜치에 push
+2. GitHub Actions가 `front`, `back`, `automation` 이미지를 빌드
+3. 각 이미지를 private GHCR에 `latest`와 커밋 SHA 태그로 push
+4. Actions가 Cloudflare Access SSH로 서버 접속
+5. 서버에서 `server/docker/deploy.sh` 실행
+6. `docker-compose.prod.yml` 기준으로 pull-only 배포
+
+### 서버에서 수동 배포
+
+```bash
+IMAGE_TAG=latest bash server/docker/deploy.sh
+```
+
 자세한 설정/디버깅/배포는 `CHROME_EXTENSION_GUIDE.md`를 참고하세요.
