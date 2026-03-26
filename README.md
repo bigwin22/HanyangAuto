@@ -116,7 +116,7 @@ Playwright Chromium 설치가 포함된 자동화 이미지는 [automation.Docke
 - `SESSION_SECRET_B64`
 - `ADMIN_INITIAL_PASSWORD`
 
-`SERVER_APP_PATH`는 self-hosted runner가 설치된 서버에서 운영용 `.env`, `data`, `logs`를 보관할 절대 경로입니다. 이 경로 자체가 git repo일 필요는 없습니다.
+`SERVER_APP_PATH`는 self-hosted runner가 설치된 서버에서 운영용 `.env`, `data`, `logs`, `docker-compose.prod.yml`, `deploy.sh`를 보관할 절대 경로입니다. 이 경로 자체가 git repo일 필요는 없습니다.
 
 ### 배포 시 생성되는 `.env`
 
@@ -134,9 +134,10 @@ Playwright Chromium 설치가 포함된 자동화 이미지는 [automation.Docke
 2. GitHub-hosted runner가 `front`, `back`, `automation` 이미지를 빌드
 3. 각 이미지를 private GHCR에 `latest`와 커밋 SHA 태그로 push
 4. self-hosted runner가 workflow workspace에 최신 코드를 checkout
-5. GitHub Secrets 값으로 `${SERVER_APP_PATH}/.env`를 재생성
-6. 서버에서 `${SERVER_APP_PATH}/data`, `${SERVER_APP_PATH}/logs` 디렉터리를 보장
-7. checkout된 `deploy.sh`와 `docker-compose.prod.yml`로 pull-only 배포 실행
+5. 최신 `docker-compose.prod.yml`, `deploy.sh`를 `${SERVER_APP_PATH}`로 복사
+6. GitHub Secrets 값으로 `${SERVER_APP_PATH}/.env`를 재생성
+7. 서버에서 `${SERVER_APP_PATH}/data`, `${SERVER_APP_PATH}/logs` 디렉터리를 보장
+8. `${SERVER_APP_PATH}` 안의 배포 파일로 pull-only 배포 실행
 
 ### 서버에서 수동 배포
 

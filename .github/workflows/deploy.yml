@@ -112,6 +112,9 @@ jobs:
             fi
           done
           mkdir -p "${APP_PATH}" "${APP_DATA_DIR}" "${APP_LOGS_DIR}"
+          cp "${GITHUB_WORKSPACE}/server/docker/docker-compose.prod.yml" "${APP_PATH}/docker-compose.prod.yml"
+          cp "${GITHUB_WORKSPACE}/server/docker/deploy.sh" "${APP_PATH}/deploy.sh"
+          chmod 700 "${APP_PATH}/deploy.sh"
           cat > "${APP_PATH}/.env" <<EOF
           GHCR_OWNER=${GHCR_OWNER}
           GHCR_USERNAME=${GHCR_USERNAME}
@@ -131,7 +134,6 @@ jobs:
           EOF
           chmod 600 "${APP_PATH}/.env"
           IMAGE_TAG="${IMAGE_TAG}" \
-          PROJECT_ROOT="${PROJECT_ROOT}" \
           ENV_FILE="${APP_PATH}/.env" \
-          COMPOSE_FILE="${GITHUB_WORKSPACE}/server/docker/docker-compose.prod.yml" \
-          bash "${GITHUB_WORKSPACE}/server/docker/deploy.sh"
+          COMPOSE_FILE="${APP_PATH}/docker-compose.prod.yml" \
+          bash "${APP_PATH}/deploy.sh"
