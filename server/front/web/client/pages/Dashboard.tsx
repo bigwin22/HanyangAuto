@@ -18,16 +18,7 @@ export default function Dashboard() {
   const [userLog, setUserLog] = useState<string>("");
   const [authChecked, setAuthChecked] = useState(false);
   const [auth, setAuth] = useState(false);
-
-  // 실제 API에서 유저 데이터 받아오기
   const [users, setUsers] = useState<User[]>([]);
-  useEffect(() => {
-    // TODO: 실제 API 엔드포인트로 교체
-    fetch("/api/admin/users")
-      .then((res) => res.json())
-      .then((data) => setUsers(data))
-      .catch(() => setUsers([]));
-  }, []);
 
   useEffect(() => {
     fetch("/api/admin/check-auth")
@@ -43,6 +34,29 @@ export default function Dashboard() {
         navigate("/admin/login");
       });
   }, [navigate]);
+
+  useEffect(() => {
+    if (!auth) {
+      return;
+    }
+
+    fetch("/api/admin/users")
+      .then(async (res) => {
+        if (res.status === 401) {
+          navigate("/admin/login");
+          return [];
+        }
+
+        if (!res.ok) {
+          throw new Error("failed_to_load_users");
+        }
+
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      })
+      .then((data) => setUsers(data))
+      .catch(() => setUsers([]));
+  }, [auth, navigate]);
 
   // 로그아웃 핸들러
   const handleLogout = async () => {
@@ -74,6 +88,7 @@ export default function Dashboard() {
     if (selectedUser && selectedUser.id === user.id) {
       setSelectedUser(null);
       setShowUserCourses(false);
+      setShowUserLogs(false);
     } else {
       setSelectedUser(user);
       setShowUserCourses(true);
@@ -90,9 +105,10 @@ export default function Dashboard() {
       const res = await fetch(`/api/admin/user/${user.userId}/logs`);
       if (res.ok) {
         const text = await res.text();
-        setUserLog(text);
+        setUserLog(text || "로그 내용이 비어 있습니다.");
       } else {
-        setUserLog("로그 파일 없음");
+        const payload = await res.json().catch(() => null);
+        setUserLog(payload?.message || "로그 파일 없음");
       }
     } catch {
       setUserLog("로그 불러오기 실패");
@@ -325,14 +341,20 @@ export default function Dashboard() {
             </div>
             <div className="p-6 max-sm:p-4">
               <div className="grid gap-3">
-                {selectedUser.courses.map((course, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-[#F9FAFB] rounded-[8px]"
-                  >
-                    <span className="text-[14px] text-[#111827]">{course}</span>
+                {selectedUser.courses.length > 0 ? (
+                  selectedUser.courses.map((course, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-[#F9FAFB] rounded-[8px]"
+                    >
+                      <span className="text-[14px] text-[#111827]">{course}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-3 bg-[#F9FAFB] rounded-[8px] text-[14px] text-[#6B7280]">
+                    아직 기록된 수강 강의가 없습니다.
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>

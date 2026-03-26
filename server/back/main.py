@@ -1,7 +1,8 @@
 import os
 import sys
+from pathlib import Path as FilePath
 from fastapi import FastAPI, Request, HTTPException, status, Depends, Path
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import base64
@@ -9,7 +10,7 @@ import httpx
 
 # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import utils.database as db
-from utils.logger import HanyangLogger
+from utils.logger import HanyangLogger, LOG_BASE
 from utils.database import decrypt_password
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -241,35 +242,55 @@ def admin_change_password(req: AdminChangePasswordRequest, request: Request):
 
 def _get_logs_sync(user_id: str):
     import glob
-    from datetime import datetime
 
-    today = datetime.now().strftime("%Y%m%d")
-    logs_base_dir = os.path.join("logs")
-    user_log_dir = os.path.join(logs_base_dir, today, "user", user_id)
-    if not os.path.isdir(user_log_dir):
+    user_log_dirs = sorted(
+        [
+            os.path.join(LOG_BASE, day_dir, "user", user_id)
+            for day_dir in os.listdir(LOG_BASE)
+            if os.path.isdir(os.path.join(LOG_BASE, day_dir, "user", user_id))
+        ],
+        reverse=True,
+    ) if os.path.isdir(LOG_BASE) else []
+
+    if not user_log_dirs:
         return None, "path_not_found"
-    
-    log_files = sorted(glob.glob(os.path.join(user_log_dir, "log*.log")))
-    if not log_files:
+
+    latest_log_file = None
+    for user_log_dir in user_log_dirs:
+        log_files = sorted(
+            glob.glob(os.path.join(user_log_dir, "log*.log")),
+            key=os.path.getmtime,
+            reverse=True,
+        )
+        if log_files:
+            latest_log_file = log_files[0]
+            break
+
+    if not latest_log_file:
         return None, "file_not_found"
-        
-    latest_log_file = log_files[-1]
+
     with open(latest_log_file, "r", encoding="utf-8") as f:
         log_content = f.read()
-    return log_content, "success"
+    return {
+        "content": log_content,
+        "path": str(FilePath(latest_log_file).resolve()),
+    }, "success"
 
 @app.get("/api/admin/user/{user_id}/logs", dependencies=[Depends(get_current_admin)])
 async def get_user_logs(user_id: str):
     import asyncio
     loop = asyncio.get_running_loop()
-    log_content, status = await loop.run_in_executor(None, _get_logs_sync, user_id)
+    log_payload, status = await loop.run_in_executor(None, _get_logs_sync, user_id)
 
     if status == "path_not_found":
         return JSONResponse(status_code=404, content={"message": "로그 파일 경로 없음"})
     if status == "file_not_found":
-        return JSONResponse(status_code=404, content={"message": "오늘 날짜 로그 파일 없음"})
-    
-    return JSONResponse(content=log_content)
+        return JSONResponse(status_code=404, content={"message": "사용자 로그 파일 없음"})
+
+    return PlainTextResponse(
+        content=log_payload["content"],
+        headers={"X-Log-Path": log_payload["path"]},
+    )
 
 @app.post("/api/admin/trigger-all", dependencies=[Depends(get_current_admin)])
 async def trigger_all_users():
@@ -280,8 +301,14 @@ async def trigger_all_users():
                 timeout=10.0
             )
             if response.status_code == 200:
-                pass
-            else:
-               pass
+                payload = response.json()
+                return {"success": True, "message": payload.get("message", "모든 유저 자동 수강을 시작했습니다.")}
+            return JSONResponse(
+                status_code=response.status_code,
+                content={"detail": response.text or "자동 수강 시작에 실패했습니다."},
+            )
     except Exception as e:
-        pass
+        return JSONResponse(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            content={"detail": f"자동화 서버 호출 실패: {e}"},
+        )
