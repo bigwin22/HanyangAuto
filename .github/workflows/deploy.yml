@@ -83,7 +83,6 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }}
           DOMAIN: ${{ secrets.DOMAIN }}
-          PORT: ${{ secrets.PORT }}
           DB_ENCRYPTION_KEY_B64: ${{ secrets.DB_ENCRYPTION_KEY_B64 }}
           SESSION_SECRET_B64: ${{ secrets.SESSION_SECRET_B64 }}
           ADMIN_INITIAL_PASSWORD: ${{ secrets.ADMIN_INITIAL_PASSWORD }}
@@ -100,7 +99,6 @@ jobs:
             GHCR_TOKEN
             CONTAINER_NAME
             DOMAIN
-            PORT
             APP_PATH
             DB_ENCRYPTION_KEY_B64
             SESSION_SECRET_B64
@@ -121,7 +119,6 @@ jobs:
           GHCR_TOKEN=${GHCR_TOKEN}
           CONTAINER_NAME=${CONTAINER_NAME}
           DOMAIN=${DOMAIN}
-          PORT=${PORT}
           APP_DATA_DIR=${APP_DATA_DIR}
           APP_LOGS_DIR=${APP_LOGS_DIR}
           DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
