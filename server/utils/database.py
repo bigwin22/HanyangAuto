@@ -2,6 +2,8 @@ import os
 import sqlite3
 from datetime import datetime
 import base64
+import hashlib
+import hmac
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 
@@ -77,6 +79,8 @@ def load_or_generate_key():
         return load_or_generate_key()
 
 SECRET_KEY = load_or_generate_key()
+ADMIN_PASSWORD_PREFIX = 'pbkdf2_sha256'
+ADMIN_PASSWORD_ITERATIONS = int(os.getenv("ADMIN_PASSWORD_HASH_ITERATIONS", "390000"))
 
 # 비밀번호 암호화 함수
 def encrypt_password(plain_pwd: str) -> str:
@@ -118,6 +122,48 @@ def decrypt_password(enc_pwd: str) -> str:
     except Exception as e:
         raise ValueError(f"Failed to decrypt legacy password format: {e}")
 
+
+def hash_admin_password(plain_pwd: str) -> str:
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        plain_pwd.encode("utf-8"),
+        salt,
+        ADMIN_PASSWORD_ITERATIONS,
+    )
+    salt_b64 = base64.b64encode(salt).decode("utf-8")
+    digest_b64 = base64.b64encode(digest).decode("utf-8")
+    return f"{ADMIN_PASSWORD_PREFIX}${ADMIN_PASSWORD_ITERATIONS}${salt_b64}${digest_b64}"
+
+
+def is_admin_password_hashed(stored_pwd: str) -> bool:
+    return stored_pwd.startswith(f"{ADMIN_PASSWORD_PREFIX}$")
+
+
+def verify_admin_password(stored_pwd: str, plain_pwd: str) -> bool:
+    if is_admin_password_hashed(stored_pwd):
+        try:
+            _, iterations, salt_b64, digest_b64 = stored_pwd.split("$", 3)
+            computed_digest = hashlib.pbkdf2_hmac(
+                "sha256",
+                plain_pwd.encode("utf-8"),
+                base64.b64decode(salt_b64),
+                int(iterations),
+            )
+            expected_digest = base64.b64decode(digest_b64)
+            return hmac.compare_digest(computed_digest, expected_digest)
+        except Exception:
+            return False
+
+    try:
+        return hmac.compare_digest(decrypt_password(stored_pwd), plain_pwd)
+    except Exception:
+        return False
+
+
+def admin_password_needs_migration(stored_pwd: str) -> bool:
+    return not is_admin_password_hashed(stored_pwd)
+
 def get_conn():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
@@ -150,11 +196,19 @@ def init_db():
     # 어드민 계정이 없으면 생성
     c.execute('SELECT * FROM Admin WHERE NUM = 1')
     if not c.fetchone():
-        from .database import encrypt_password
-        # 환경변수로 초기 관리자 비밀번호를 설정(미설정 시 'admin')
-        admin_password = os.getenv("ADMIN_INITIAL_PASSWORD", "admin")
-        # print(f"Generated admin password: {admin_password}")
-        c.execute('INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', ('admin', encrypt_password(admin_password)))
+        admin_password = os.getenv("ADMIN_INITIAL_PASSWORD", "").strip()
+        if not admin_password or admin_password.lower() == "admin":
+            conn.close()
+            raise ValueError(
+                "ADMIN_INITIAL_PASSWORD must be set to a non-default value before the first startup."
+            )
+        if len(admin_password) < 12:
+            conn.close()
+            raise ValueError("ADMIN_INITIAL_PASSWORD must be at least 12 characters long.")
+        c.execute(
+            'INSERT INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)',
+            ('admin', hash_admin_password(admin_password)),
+        )
         conn.commit()
     conn.close()
 
@@ -190,7 +244,7 @@ def get_user_by_id(user_id):
     return user
 
 def add_admin(admin_id, plain_pwd):
-    pwd_encrypted = encrypt_password(plain_pwd)
+    pwd_encrypted = hash_admin_password(plain_pwd)
     conn = get_conn()
     c = conn.cursor()
     c.execute('INSERT OR REPLACE INTO Admin (NUM, ID, PWD_Encrypted) VALUES (1, ?, ?)', (admin_id, pwd_encrypted))
@@ -198,7 +252,7 @@ def add_admin(admin_id, plain_pwd):
     conn.close()
 
 def update_admin_pwd(admin_id, plain_pwd):
-    pwd_encrypted = encrypt_password(plain_pwd)
+    pwd_encrypted = hash_admin_password(plain_pwd)
     conn = get_conn()
     c = conn.cursor()
     c.execute('UPDATE Admin SET PWD_Encrypted = ?, Modified_at = CURRENT_TIMESTAMP WHERE ID = ?', (pwd_encrypted, admin_id))
@@ -258,21 +312,5 @@ def get_all_users():
     return users
 
 if __name__ == "__main__":
-    # DB 및 테이블 생성
     init_db()
-    # 테스트 데이터 추가
-    try:
-        add_user('testuser', 'encrypted_pwd1')
-    except Exception as e:
-        print(f"User insert error: {e}")
-    try:
-        add_admin('admin', 'admin')
-    except Exception as e:
-        print(f"Admin insert error: {e}")
-    try:
-        user = get_user_by_id('testuser')
-        if user:
-            add_learned_lecture(user[0], 'lecture_001')
-    except Exception as e:
-        print(f"Learned_Lecture insert error: {e}")
-    print("DB 초기화 및 테스트 데이터 추가 완료.") 
+    print("DB 초기화 완료.")

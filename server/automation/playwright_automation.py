@@ -10,6 +10,7 @@ from playwright.sync_api import Dialog, Frame, Page, TimeoutError as PlaywrightT
 
 from utils.logger import HanyangLogger
 from utils.database import update_user_status
+from utils.security import mask_sensitive_text, mask_sensitive_url
 
 LMS_ORIGIN = "https://learning.hanyang.ac.kr"
 OAUTH_HOST = "https://api.hanyang.ac.kr/oauth/login"
@@ -87,7 +88,7 @@ def _fetch_json(page: Page, url: str) -> Any:
 
 
 def _handle_dialog(logger: HanyangLogger, dialog: Dialog) -> None:
-    logger.info("login", f"dialog: {dialog.message}")
+    logger.info("login", f"dialog: {mask_sensitive_text(dialog.message)}")
     dialog.accept()
 
 
@@ -125,7 +126,10 @@ def _submit_login_form(page: Page, user_id: str, password: str, logger: HanyangL
     code = str(payload.get("code") or "")
     msg = str(payload.get("msg") or "")
     url = str(payload.get("url") or "")
-    logger.info("login", f"login_submit result: code={code}, url={url or '-'}, msg={msg or '-'}")
+    logger.info(
+        "login",
+        f"login_submit result: code={code}, url={mask_sensitive_url(url) or '-'}, msg={mask_sensitive_text(msg) or '-'}",
+    )
     return {
         "status": int(result["status"]),
         "code": code,
@@ -532,18 +536,18 @@ def _login(page: Page, user_id: str, password: str, logger: HanyangLogger) -> Di
     try:
         page.goto(LMS_ORIGIN, wait_until="domcontentloaded")
     except Exception as exc:
-        logger.info("login", f"LMS navigation after login_submit raised: {exc}")
+        logger.info("login", f"LMS navigation after login_submit raised: {mask_sensitive_text(exc)}")
 
     end_time = time.time() + 20
     while time.time() < end_time:
         current_url = page.url
         if current_url.startswith(LMS_ORIGIN):
             if "oauth/login" not in current_url:
-                logger.info("login", f"logged in at {current_url}")
+                logger.info("login", f"logged in at {mask_sensitive_url(current_url)}")
                 return {"login": True, "msg": "로그인 성공"}
         time.sleep(1)
 
-    return {"login": False, "msg": f"로그인 후 LMS 이동 실패: {page.url}"}
+    return {"login": False, "msg": f"로그인 후 LMS 이동 실패: {mask_sensitive_url(page.url)}"}
 
 
 def _discover_courses(page: Page, logger: HanyangLogger) -> List[Dict[str, str]]:
@@ -777,12 +781,12 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_
         update_user_status(user_id, "completed")
         return {"success": True, "msg": f"{len(learned)}개 강의 처리 완료", "learned": learned}
     except Exception as exc:
-        user_logger.error("automation", f"playwright automation error: {exc}")
+        user_logger.error("automation", f"playwright automation error: {mask_sensitive_text(exc)}")
         try:
             update_user_status(user_id, "error")
         except Exception as status_exc:
-            user_logger.error("automation", f"status update failed: {status_exc}")
-        return {"success": False, "msg": f"자동화 오류: {exc}", "learned": learned}
+            user_logger.error("automation", f"status update failed: {mask_sensitive_text(status_exc)}")
+        return {"success": False, "msg": "자동화 오류가 발생했습니다.", "learned": learned}
     finally:
         if browser:
             browser.close()
@@ -813,8 +817,8 @@ def verify_user_login(user_id: str, pwd: str) -> Dict[str, Any]:
             "code": submit_result["code"],
         }
     except Exception as exc:
-        logger.error("verification", f"login verification failed: {exc}")
-        return {"success": False, "message": f"계정 확인 중 오류가 발생했습니다: {exc}"}
+        logger.error("verification", f"login verification failed: {mask_sensitive_text(exc)}")
+        return {"success": False, "message": "계정 확인 중 오류가 발생했습니다."}
     finally:
         if browser:
             browser.close()
