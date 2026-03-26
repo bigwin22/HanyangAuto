@@ -1,14 +1,11 @@
 services:
   front:
-    build:
-      context: ..
-      dockerfile: docker/front.Dockerfile
-    image: ${DOCKER_IMAGE}-front
+    image: ghcr.io/${GHCR_OWNER}/hanyangauto-front:${IMAGE_TAG:-latest}
     container_name: ${CONTAINER_NAME}_front
     restart: always
     networks:
-      - hanyang-net  
-      - traefik-net 
+      - hanyang-net
+      - traefik-net
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.hanyang-automation.rule=Host(`${DOMAIN}`)"
@@ -21,17 +18,14 @@ services:
       - ${PORT:-8000}:8000
 
   automation:
-    build:
-      context: ..
-      dockerfile: docker/automation.Dockerfile
-    image: ${DOCKER_IMAGE}-automation
+    image: ghcr.io/${GHCR_OWNER}/hanyangauto-automation:${IMAGE_TAG:-latest}
     container_name: ${CONTAINER_NAME}_automation
     environment:
       - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
     restart: always
     volumes:
-      - ../data:/app/data
-      - ../logs:/app/logs
+      - ${APP_DATA_DIR}:/app/data
+      - ${APP_LOGS_DIR}:/app/logs
     networks:
       - hanyang-net
     depends_on:
@@ -42,17 +36,18 @@ services:
     platform: linux/amd64
 
   back:
-    build:
-      context: ..
-      dockerfile: docker/back.Dockerfile
-    image: ${DOCKER_IMAGE}-back
+    image: ghcr.io/${GHCR_OWNER}/hanyangauto-back:${IMAGE_TAG:-latest}
     container_name: ${CONTAINER_NAME}_back
     restart: always
     environment:
       - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
+      - SESSION_SECRET_B64=${SESSION_SECRET_B64}
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD}
+      - RECEIVE_SERVER_URL=${RECEIVE_SERVER_URL}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
     volumes:
-      - ../data:/app/data
-      - ../logs:/app/logs
+      - ${APP_DATA_DIR}:/app/data
+      - ${APP_LOGS_DIR}:/app/logs
     networks:
       - hanyang-net
     user: "1000:1000"
