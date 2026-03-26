@@ -9,15 +9,14 @@ permissions:
   contents: read
   packages: write
 
-env:
-  REGISTRY: ghcr.io
-  FRONT_IMAGE: ghcr.io/${{ github.repository_owner }}/hanyangauto-front
-  BACK_IMAGE: ghcr.io/${{ github.repository_owner }}/hanyangauto-back
-  AUTOMATION_IMAGE: ghcr.io/${{ github.repository_owner }}/hanyangauto-automation
-
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      FRONT_IMAGE: ghcr.io/${{ github.repository_owner }}/hanyangauto-front
+      BACK_IMAGE: ghcr.io/${{ github.repository_owner }}/hanyangauto-back
+      AUTOMATION_IMAGE: ghcr.io/${{ github.repository_owner }}/hanyangauto-automation
     steps:
       - uses: actions/checkout@v4
 
@@ -27,8 +26,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.GHCR_USERNAME }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
 
       - name: Build and push front image
         uses: docker/build-push-action@v6
@@ -66,34 +65,73 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Install cloudflared
-        run: |
-          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
-          chmod +x cloudflared
-          sudo mv cloudflared /usr/local/bin/cloudflared
+  deploy:
+    runs-on: self-hosted
+    needs: build
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Set up SSH key and config
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          cat > ~/.ssh/config <<EOF
-          Host hanyang-prod
-            HostName ${SERVER_HOST}
-            User ${SERVER_USER}
-            Port 22
-            IdentityFile ~/.ssh/id_ed25519
-            StrictHostKeyChecking accept-new
-            ProxyCommand /usr/bin/env bash -lc 'CF_ACCESS_CLIENT_ID="${{ secrets.CF_ACCESS_CLIENT_ID }}" CF_ACCESS_CLIENT_SECRET="${{ secrets.CF_ACCESS_CLIENT_SECRET }}" cloudflared access ssh --hostname %h'
-          EOF
-          chmod 600 ~/.ssh/config
-
-      - name: Deploy on server
+      - name: Deploy on self-hosted runner
         env:
           IMAGE_TAG: ${{ github.sha }}
           APP_PATH: ${{ secrets.SERVER_APP_PATH }}
+          GHCR_OWNER: ${{ secrets.GHCR_OWNER }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          CONTAINER_NAME: ${{ secrets.CONTAINER_NAME }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          PORT: ${{ secrets.PORT }}
+          DB_ENCRYPTION_KEY_B64: ${{ secrets.DB_ENCRYPTION_KEY_B64 }}
+          SESSION_SECRET_B64: ${{ secrets.SESSION_SECRET_B64 }}
+          ADMIN_INITIAL_PASSWORD: ${{ secrets.ADMIN_INITIAL_PASSWORD }}
+          RECEIVE_SERVER_URL: http://automation:7000
+          CORS_ALLOW_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+          PLAYWRIGHT_HEADLESS: "true"
         run: |
-          ssh hanyang-prod "cd '${APP_PATH}' && IMAGE_TAG='${IMAGE_TAG}' bash server/docker/deploy.sh"
+          PROJECT_ROOT="${GITHUB_WORKSPACE}/server"
+          APP_DATA_DIR="${APP_PATH}/data"
+          APP_LOGS_DIR="${APP_PATH}/logs"
+          required_vars=(
+            GHCR_OWNER
+            GHCR_USERNAME
+            GHCR_TOKEN
+            CONTAINER_NAME
+            DOMAIN
+            PORT
+            APP_PATH
+            DB_ENCRYPTION_KEY_B64
+            SESSION_SECRET_B64
+          )
+          for var_name in "${required_vars[@]}"; do
+            if [ -z "${!var_name}" ]; then
+              echo "Missing required secret: ${var_name}" >&2
+              exit 1
+            fi
+          done
+          mkdir -p "${APP_PATH}" "${APP_DATA_DIR}" "${APP_LOGS_DIR}"
+          cat > "${APP_PATH}/.env" <<EOF
+          GHCR_OWNER=${GHCR_OWNER}
+          GHCR_USERNAME=${GHCR_USERNAME}
+          GHCR_TOKEN=${GHCR_TOKEN}
+          CONTAINER_NAME=${CONTAINER_NAME}
+          DOMAIN=${DOMAIN}
+          PORT=${PORT}
+          APP_DATA_DIR=${APP_DATA_DIR}
+          APP_LOGS_DIR=${APP_LOGS_DIR}
+          DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
+          SESSION_SECRET_B64=${SESSION_SECRET_B64}
+          ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD}
+          RECEIVE_SERVER_URL=${RECEIVE_SERVER_URL}
+          CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+          PLAYWRIGHT_HEADLESS=${PLAYWRIGHT_HEADLESS}
+          IMAGE_TAG=${IMAGE_TAG}
+          EOF
+          chmod 600 "${APP_PATH}/.env"
+          IMAGE_TAG="${IMAGE_TAG}" \
+          PROJECT_ROOT="${PROJECT_ROOT}" \
+          ENV_FILE="${APP_PATH}/.env" \
+          COMPOSE_FILE="${GITHUB_WORKSPACE}/server/docker/docker-compose.prod.yml" \
+          bash "${GITHUB_WORKSPACE}/server/docker/deploy.sh"

@@ -94,7 +94,7 @@ Playwright Chromium 설치가 포함된 자동화 이미지는 [automation.Docke
 
 ## Private GHCR 기반 배포
 
-운영 배포는 GitHub Actions가 이미지를 빌드해서 private GHCR로 올리고, 서버는 이미지를 pull해서 재시작만 하도록 구성되어 있습니다.
+운영 배포는 GitHub-hosted runner가 이미지를 빌드해서 private GHCR로 올리고, self-hosted runner가 서버에서 이미지를 pull해서 재시작만 하도록 구성되어 있습니다.
 
 ### 추가된 파일
 
@@ -105,32 +105,38 @@ Playwright Chromium 설치가 포함된 자동화 이미지는 [automation.Docke
 
 ### GitHub Secrets
 
-- `CF_ACCESS_CLIENT_ID`
-- `CF_ACCESS_CLIENT_SECRET`
-- `SSH_PRIVATE_KEY`
-- `SERVER_HOST`
-- `SERVER_USER`
 - `SERVER_APP_PATH`
-- `GHCR_USERNAME`
-- `GHCR_TOKEN`
-
-### 서버 .env 추가 값
-
-운영 서버의 `.env`에는 기존 값 외에도 아래가 필요합니다.
-
 - `GHCR_OWNER`
 - `GHCR_USERNAME`
 - `GHCR_TOKEN`
-- `IMAGE_TAG`
+- `CONTAINER_NAME`
+- `DOMAIN`
+- `PORT`
+- `DB_ENCRYPTION_KEY_B64`
+- `SESSION_SECRET_B64`
+- `ADMIN_INITIAL_PASSWORD`
+
+`SERVER_APP_PATH`는 self-hosted runner가 설치된 서버에서 운영용 `.env`, `data`, `logs`를 보관할 절대 경로입니다. 이 경로 자체가 git repo일 필요는 없습니다.
+
+### 배포 시 생성되는 `.env`
+
+배포 job은 위 개별 secrets를 합쳐 `${SERVER_APP_PATH}/.env`를 매번 다시 생성합니다. `IMAGE_TAG`는 workflow가 자동으로 현재 커밋 SHA를 넣습니다.
+컨테이너 볼륨은 `${SERVER_APP_PATH}/data`, `${SERVER_APP_PATH}/logs`를 사용합니다.
+아래 값들은 workflow 기본값으로 고정되어 별도 secret이 필요 없습니다.
+
+- `RECEIVE_SERVER_URL=http://automation:7000`
+- `CORS_ALLOW_ORIGINS=http://localhost:8000,http://127.0.0.1:8000`
+- `PLAYWRIGHT_HEADLESS=true`
 
 ### 운영 배포 흐름
 
 1. `main` 브랜치에 push
-2. GitHub Actions가 `front`, `back`, `automation` 이미지를 빌드
+2. GitHub-hosted runner가 `front`, `back`, `automation` 이미지를 빌드
 3. 각 이미지를 private GHCR에 `latest`와 커밋 SHA 태그로 push
-4. Actions가 Cloudflare Access SSH로 서버 접속
-5. 서버에서 `server/docker/deploy.sh` 실행
-6. `docker-compose.prod.yml` 기준으로 pull-only 배포
+4. self-hosted runner가 workflow workspace에 최신 코드를 checkout
+5. GitHub Secrets 값으로 `${SERVER_APP_PATH}/.env`를 재생성
+6. 서버에서 `${SERVER_APP_PATH}/data`, `${SERVER_APP_PATH}/logs` 디렉터리를 보장
+7. checkout된 `deploy.sh`와 `docker-compose.prod.yml`로 pull-only 배포 실행
 
 ### 서버에서 수동 배포
 

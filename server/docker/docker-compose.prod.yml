@@ -24,8 +24,8 @@ services:
       - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
     restart: always
     volumes:
-      - ../data:/app/data
-      - ../logs:/app/logs
+      - ${APP_DATA_DIR}:/app/data
+      - ${APP_LOGS_DIR}:/app/logs
     networks:
       - hanyang-net
     depends_on:
@@ -46,8 +46,8 @@ services:
       - RECEIVE_SERVER_URL=${RECEIVE_SERVER_URL}
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
     volumes:
-      - ../data:/app/data
-      - ../logs:/app/logs
+      - ${APP_DATA_DIR}:/app/data
+      - ${APP_LOGS_DIR}:/app/logs
     networks:
       - hanyang-net
     user: "1000:1000"

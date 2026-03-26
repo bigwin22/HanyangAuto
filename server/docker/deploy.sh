@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 COMPOSE_FILE="${COMPOSE_FILE:-${SCRIPT_DIR}/docker-compose.prod.yml}"
 ENV_FILE="${ENV_FILE:-${PROJECT_ROOT}/.env}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
@@ -46,6 +46,8 @@ required_env_vars=(
   CONTAINER_NAME
   DOMAIN
   PORT
+  APP_DATA_DIR
+  APP_LOGS_DIR
   DB_ENCRYPTION_KEY_B64
   SESSION_SECRET_B64
 )
@@ -57,9 +59,12 @@ for env_var in "${required_env_vars[@]}"; do
   fi
 done
 
+mkdir -p "${APP_DATA_DIR}" "${APP_LOGS_DIR}"
+
 echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
 
 export IMAGE_TAG
+export PROJECT_ROOT
 
 "${DOCKER_COMPOSE[@]}" --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" pull
 "${DOCKER_COMPOSE[@]}" --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" up -d
