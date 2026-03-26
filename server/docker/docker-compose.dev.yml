@@ -28,8 +28,6 @@ services:
     container_name: ${CONTAINER_NAME}_automation
     environment:
       - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
-      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
-      - AUTOMATION_CORS_ALLOW_ORIGINS=${AUTOMATION_CORS_ALLOW_ORIGINS}
     restart: always
     volumes:
       - ../data:/app/data
@@ -52,13 +50,6 @@ services:
     restart: always
     environment:
       - DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
-      - SESSION_SECRET_B64=${SESSION_SECRET_B64}
-      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD}
-      - RECEIVE_SERVER_URL=${RECEIVE_SERVER_URL}
-      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
-      - INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE}
-      - SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs

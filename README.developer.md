@@ -48,7 +48,6 @@ HanyangAuto/
 
 ```bash
 cd server
-set -a; source ../.env; set +a
 uvicorn automation.main:app --reload --port 7000
 ```
 
@@ -56,7 +55,6 @@ uvicorn automation.main:app --reload --port 7000
 
 ```bash
 cd server
-set -a; source ../.env; set +a
 uvicorn back.main:app --reload --port 9000
 ```
 
@@ -82,29 +80,13 @@ cp .env.example .env
 
 - `DB_ENCRYPTION_KEY_B64`
 - `SESSION_SECRET_B64`
-- `INTERNAL_API_TOKEN`
-- `ADMIN_INITIAL_PASSWORD`
 - `DOCKER_IMAGE`
 - `CONTAINER_NAME`
-
-운영 compose 또는 `deploy.sh` 기준으로 추가 필요한 값:
-
-- `GHCR_OWNER`
-- `GHCR_USERNAME`
-- `GHCR_TOKEN`
-- `APP_DATA_DIR`
-- `APP_LOGS_DIR`
 
 키 생성 예시:
 
 ```bash
 openssl rand -base64 32
-```
-
-내부 API 토큰 예시:
-
-```bash
-openssl rand -hex 32
 ```
 
 ```bash
@@ -144,7 +126,6 @@ Playwright Chromium 설치가 포함된 자동화 이미지는 [automation.Docke
 - `DB_ENCRYPTION_KEY_B64`
 - `SESSION_SECRET_B64`
 - `ADMIN_INITIAL_PASSWORD`
-- `INTERNAL_API_TOKEN`
 
 `SERVER_APP_PATH`는 self-hosted runner가 설치된 서버에서 운영용 `.env`, `data`, `logs`, `docker-compose.yml`, `deploy.sh`를 보관할 절대 경로입니다. 이 경로 자체가 git repo일 필요는 없습니다.
 
@@ -156,15 +137,7 @@ Playwright Chromium 설치가 포함된 자동화 이미지는 [automation.Docke
 
 - `RECEIVE_SERVER_URL=http://automation:7000`
 - `CORS_ALLOW_ORIGINS=http://localhost:8000,http://127.0.0.1:8000`
-- `SESSION_COOKIE_SECURE=true`
-- `SESSION_COOKIE_SAMESITE=lax`
-- `AUTOMATION_CORS_ALLOW_ORIGINS=`
 - `PLAYWRIGHT_HEADLESS=true`
-
-주의:
-
-- `back.main` 와 `automation.main` 은 이제 `INTERNAL_API_TOKEN` 이 없으면 시작하지 않습니다.
-- 최초 admin 생성 시 `ADMIN_INITIAL_PASSWORD` 는 필수이며, `admin` 또는 12자 미만 값은 거부합니다.
 
 ### 운영 배포 흐름
 

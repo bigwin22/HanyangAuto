@@ -49,8 +49,6 @@ required_env_vars=(
   APP_LOGS_DIR
   DB_ENCRYPTION_KEY_B64
   SESSION_SECRET_B64
-  ADMIN_INITIAL_PASSWORD
-  INTERNAL_API_TOKEN
 )
 
 for env_var in "${required_env_vars[@]}"; do
