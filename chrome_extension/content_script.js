@@ -298,16 +298,26 @@ const getAttendanceSnapshot = () => {
   };
 };
 
-const isScheduledLecture = (snapshot) => {
+const getLectureAvailabilityState = (snapshot) => {
   const combined = [...(snapshot.statusParts || []), snapshot.bodyText || ""].join(" ");
-  return [
+  const scheduledMarkers = [
     "학습이 가능합니다",
     "부터 학습이 가능합니다",
     "학습 예정",
     "오픈 예정",
     "수강 예정",
     "아직 학습할 수 없습니다",
-  ].some((marker) => combined.includes(marker));
+  ];
+  if (scheduledMarkers.some((marker) => combined.includes(marker))) {
+    return "scheduled";
+  }
+
+  const expiredMarkers = ["학습 기간이 종료되었습니다."];
+  if (expiredMarkers.some((marker) => combined.includes(marker))) {
+    return "expired";
+  }
+
+  return null;
 };
 
 const isNonRequiredRecording = (snapshot) => {
@@ -328,7 +338,8 @@ const handleAttendanceFrame = async () => {
   }
 
   const snapshot = getAttendanceSnapshot();
-  if (isScheduledLecture(snapshot)) {
+  const availabilityState = getLectureAvailabilityState(snapshot);
+  if (availabilityState === "scheduled") {
     if (oncePer(`lecture_scheduled:${location.href}`, 10000)) {
       await send("LECTURE_SKIPPED", {
         lectureUrl: window.top.location.href,
@@ -336,6 +347,18 @@ const handleAttendanceFrame = async () => {
         markProcessed: false,
       }).catch(() => {});
       await reportDebug("lecture_scheduled", "학습 예정 강의 스킵", { statusParts: snapshot.statusParts });
+    }
+    return;
+  }
+
+  if (availabilityState === "expired") {
+    if (oncePer(`lecture_expired:${location.href}`, 10000)) {
+      await send("LECTURE_SKIPPED", {
+        lectureUrl: window.top.location.href,
+        reason: "학습 기간 종료 강의로 판단되어 스킵",
+        markProcessed: true,
+      }).catch(() => {});
+      await reportDebug("lecture_expired", "학습 기간 종료 강의 스킵", { statusParts: snapshot.statusParts });
     }
     return;
   }

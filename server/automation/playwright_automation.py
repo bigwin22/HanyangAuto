@@ -146,11 +146,11 @@ def _parse_duration_seconds(texts: Iterable[str]) -> int:
     return DEFAULT_DURATION_SEC
 
 
-def _is_scheduled_lecture(snapshot: Dict[str, Any]) -> bool:
+def _get_lecture_availability_state(snapshot: Dict[str, Any]) -> Optional[str]:
     body_text = str(snapshot.get("bodyText") or "")
     status_parts = [str(part or "") for part in snapshot.get("statusParts") or []]
     combined = " ".join(status_parts + [body_text])
-    markers = [
+    scheduled_markers = [
         "학습이 가능합니다",
         "부터 학습이 가능합니다",
         "학습 예정",
@@ -158,7 +158,14 @@ def _is_scheduled_lecture(snapshot: Dict[str, Any]) -> bool:
         "수강 예정",
         "아직 학습할 수 없습니다",
     ]
-    return any(marker in combined for marker in markers)
+    if any(marker in combined for marker in scheduled_markers):
+        return "scheduled"
+
+    expired_markers = ["학습 기간이 종료되었습니다."]
+    if any(marker in combined for marker in expired_markers):
+        return "expired"
+
+    return None
 
 
 def _is_non_required_recording(snapshot: Dict[str, Any], lecture: Optional[LectureItem] = None) -> bool:
@@ -615,9 +622,13 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     attendance_frame = _wait_for_attendance_frame(page)
 
     initial = _read_attendance_snapshot(attendance_frame)
-    if _is_scheduled_lecture(initial):
+    availability_state = _get_lecture_availability_state(initial)
+    if availability_state == "scheduled":
         logger.info("lecture", f"scheduled lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
         return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
+    if availability_state == "expired":
+        logger.info("lecture", f"expired lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+        return {"learn": True, "msg": "expired lecture"}
     if _is_non_required_recording(initial, lecture):
         logger.info("lecture", f"non-required recording skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
         return {"learn": True, "msg": "non-required recording"}
@@ -633,9 +644,13 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
             _refresh_status(attendance_frame, logger)
             attendance_frame = _wait_for_attendance_frame(page)
             initial = _read_attendance_snapshot(attendance_frame)
-            if _is_scheduled_lecture(initial):
+            availability_state = _get_lecture_availability_state(initial)
+            if availability_state == "scheduled":
                 logger.info("lecture", f"scheduled lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
                 return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
+            if availability_state == "expired":
+                logger.info("lecture", f"expired lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+                return {"learn": True, "msg": "expired lecture"}
             if _is_non_required_recording(initial, lecture):
                 logger.info("lecture", f"non-required recording skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
                 return {"learn": True, "msg": "non-required recording"}
@@ -658,9 +673,13 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     while time.time() < deadline:
         attendance_frame = _wait_for_attendance_frame(page)
         snapshot = _read_attendance_snapshot(attendance_frame)
-        if _is_scheduled_lecture(snapshot):
+        availability_state = _get_lecture_availability_state(snapshot)
+        if availability_state == "scheduled":
             logger.info("lecture", f"scheduled lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
             return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
+        if availability_state == "expired":
+            logger.info("lecture", f"expired lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
+            return {"learn": True, "msg": "expired lecture"}
         if _is_non_required_recording(snapshot, lecture):
             logger.info("lecture", f"non-required recording skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
             return {"learn": True, "msg": "non-required recording"}
