@@ -86,8 +86,12 @@ jobs:
           DB_ENCRYPTION_KEY_B64: ${{ secrets.DB_ENCRYPTION_KEY_B64 }}
           SESSION_SECRET_B64: ${{ secrets.SESSION_SECRET_B64 }}
           ADMIN_INITIAL_PASSWORD: ${{ secrets.ADMIN_INITIAL_PASSWORD }}
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
           RECEIVE_SERVER_URL: http://automation:7000
           CORS_ALLOW_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+          SESSION_COOKIE_SECURE: "true"
+          SESSION_COOKIE_SAMESITE: lax
+          AUTOMATION_CORS_ALLOW_ORIGINS: ""
           PLAYWRIGHT_HEADLESS: "true"
         run: |
           PROJECT_ROOT="${GITHUB_WORKSPACE}/server"
@@ -102,6 +106,8 @@ jobs:
             APP_PATH
             DB_ENCRYPTION_KEY_B64
             SESSION_SECRET_B64
+            ADMIN_INITIAL_PASSWORD
+            INTERNAL_API_TOKEN
           )
           for var_name in "${required_vars[@]}"; do
             if [ -z "${!var_name}" ]; then
@@ -124,8 +130,12 @@ jobs:
           DB_ENCRYPTION_KEY_B64=${DB_ENCRYPTION_KEY_B64}
           SESSION_SECRET_B64=${SESSION_SECRET_B64}
           ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD}
+          INTERNAL_API_TOKEN=${INTERNAL_API_TOKEN}
           RECEIVE_SERVER_URL=${RECEIVE_SERVER_URL}
           CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+          SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE}
+          SESSION_COOKIE_SAMESITE=${SESSION_COOKIE_SAMESITE}
+          AUTOMATION_CORS_ALLOW_ORIGINS=${AUTOMATION_CORS_ALLOW_ORIGINS}
           PLAYWRIGHT_HEADLESS=${PLAYWRIGHT_HEADLESS}
           IMAGE_TAG=${IMAGE_TAG}
           EOF
