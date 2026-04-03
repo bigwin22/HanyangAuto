@@ -6,13 +6,140 @@ const STORAGE_KEYS = {
   DEBUG_STATE: "debugState",
   FRAME_METRICS: "frameMetrics",
   SHOW_DEBUG_PANEL: "showDebugPanel",
+  UPDATE_INFO: "updateInfo",
 };
 
 const LMS_ORIGIN = "https://learning.hanyang.ac.kr";
 const DEBUGGER_VERSION = "1.3";
+const UPDATE_CONFIG = {
+  repoUrl: "https://github.com/HanyangAuto/hanyangauto-extension",
+  releasesApiUrl: "https://api.github.com/repos/HanyangAuto/hanyangauto-extension/releases/latest",
+  releasesPageUrl: "https://github.com/HanyangAuto/hanyangauto-extension/releases",
+  cacheMs: 1000 * 60 * 30,
+};
 
 const getStore = (keys) => chrome.storage.local.get(keys);
 const setStore = (obj) => chrome.storage.local.set(obj);
+const getCurrentVersion = () => chrome.runtime.getManifest().version;
+
+const compareVersions = (left, right) => {
+  const leftParts = String(left || "0")
+    .split(".")
+    .map((part) => Number.parseInt(part, 10) || 0);
+  const rightParts = String(right || "0")
+    .split(".")
+    .map((part) => Number.parseInt(part, 10) || 0);
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftValue = leftParts[index] || 0;
+    const rightValue = rightParts[index] || 0;
+    if (leftValue > rightValue) return 1;
+    if (leftValue < rightValue) return -1;
+  }
+  return 0;
+};
+
+const normalizeVersion = (value) => String(value || "").trim().replace(/^v/i, "");
+
+const buildUpdateInfo = ({ latestVersion, checkedAt, error, release = null, noRelease = false } = {}) => {
+  const currentVersion = getCurrentVersion();
+  const comparison =
+    latestVersion && !error ? compareVersions(normalizeVersion(currentVersion), normalizeVersion(latestVersion)) : null;
+  const status = error
+    ? "error"
+    : noRelease
+      ? "no_release"
+    : comparison === null
+      ? "unknown"
+      : comparison < 0
+        ? "update_available"
+        : comparison > 0
+          ? "ahead_of_remote"
+          : "up_to_date";
+
+  return {
+    currentVersion,
+    latestVersion: latestVersion || "",
+    checkedAt: checkedAt || Date.now(),
+    status,
+    hasUpdate: status === "update_available",
+    error: error || "",
+    repoUrl: UPDATE_CONFIG.repoUrl,
+    releasesPageUrl: UPDATE_CONFIG.releasesPageUrl,
+    releaseUrl: release?.html_url || "",
+    releaseName: release?.name || "",
+    releaseTag: release?.tag_name || "",
+    publishedAt: release?.published_at || "",
+  };
+};
+
+const fetchLatestUpdateInfo = async () => {
+  const response = await fetch(`${UPDATE_CONFIG.releasesApiUrl}?t=${Date.now()}`, {
+    cache: "no-store",
+    headers: {
+      Accept: "application/vnd.github+json",
+    },
+  });
+
+  if (response.status === 404) {
+    return buildUpdateInfo({
+      checkedAt: Date.now(),
+      noRelease: true,
+    });
+  }
+
+  if (!response.ok) {
+    throw new Error(`release fetch failed: ${response.status}`);
+  }
+
+  const release = await response.json();
+  const latestVersion = normalizeVersion(release?.tag_name);
+  if (!latestVersion) {
+    throw new Error("release tag missing");
+  }
+
+  return buildUpdateInfo({
+    latestVersion,
+    checkedAt: Date.now(),
+    release,
+  });
+};
+
+const getUpdateInfo = async ({ force = false } = {}) => {
+  const store = await getStore([STORAGE_KEYS.UPDATE_INFO]);
+  const cached = store.updateInfo;
+  const cacheFresh =
+    cached?.checkedAt && Date.now() - Number(cached.checkedAt) < UPDATE_CONFIG.cacheMs;
+
+  if (!force && cached && cacheFresh) {
+    return {
+      ...cached,
+      currentVersion: getCurrentVersion(),
+    };
+  }
+
+  try {
+    const nextInfo = await fetchLatestUpdateInfo();
+    await setStore({ [STORAGE_KEYS.UPDATE_INFO]: nextInfo });
+    return nextInfo;
+  } catch (error) {
+    const failedInfo = buildUpdateInfo({
+      latestVersion: cached?.latestVersion || "",
+      checkedAt: Date.now(),
+      error: String(error?.message || error),
+      release: cached?.releaseUrl
+        ? {
+            html_url: cached.releaseUrl,
+            name: cached.releaseName,
+            tag_name: cached.releaseTag,
+            published_at: cached.publishedAt,
+          }
+        : null,
+    });
+    await setStore({ [STORAGE_KEYS.UPDATE_INFO]: failedInfo });
+    return failedInfo;
+  }
+};
 
 const uniqueLectures = (lectures) => {
   const seen = new Set();
@@ -116,6 +243,7 @@ chrome.runtime.onInstalled.addListener(async () => {
     STORAGE_KEYS.DEBUG_STATE,
     STORAGE_KEYS.FRAME_METRICS,
     STORAGE_KEYS.SHOW_DEBUG_PANEL,
+    STORAGE_KEYS.UPDATE_INFO,
   ]);
   await setStore({
     [STORAGE_KEYS.IS_RUNNING]: false,
@@ -125,6 +253,11 @@ chrome.runtime.onInstalled.addListener(async () => {
     [STORAGE_KEYS.DEBUG_STATE]: current.debugState || {},
     [STORAGE_KEYS.FRAME_METRICS]: current.frameMetrics || {},
     [STORAGE_KEYS.SHOW_DEBUG_PANEL]: Boolean(current.showDebugPanel),
+    [STORAGE_KEYS.UPDATE_INFO]:
+      current.updateInfo ||
+      buildUpdateInfo({
+        checkedAt: 0,
+      }),
   });
 });
 
@@ -356,6 +489,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         STORAGE_KEYS.SHOW_DEBUG_PANEL,
       ]);
       sendResponse({ ok: true, ...store });
+      return;
+    }
+
+    if (action === "CHECK_EXTENSION_UPDATE") {
+      const updateInfo = await getUpdateInfo({ force: Boolean(message.force) });
+      sendResponse({ ok: true, updateInfo });
+      return;
+    }
+
+    if (action === "OPEN_EXTENSION_UPDATE_PAGE") {
+      const updateInfo = await getUpdateInfo({ force: false });
+      const targetUrl =
+        message.target === "repo"
+          ? UPDATE_CONFIG.repoUrl
+          : updateInfo.releaseUrl || UPDATE_CONFIG.releasesPageUrl;
+      await chrome.tabs.create({ url: targetUrl });
+      sendResponse({ ok: true, url: targetUrl });
       return;
     }
 
