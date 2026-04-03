@@ -2,9 +2,15 @@ name: CI
 
 on:
   pull_request:
+    paths:
+      - "server/**"
+      - ".github/workflows/ci.yml"
   push:
     branches:
       - main
+    paths:
+      - "server/**"
+      - ".github/workflows/ci.yml"
 
 jobs:
   web-checks:
