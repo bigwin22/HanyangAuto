@@ -4,7 +4,8 @@ const stopBtn = document.getElementById("stopBtn");
 const resetLearnedInput = document.getElementById("resetLearned");
 const showDebugPanelInput = document.getElementById("showDebugPanel");
 const debugDiv = document.getElementById("debug");
-const versionInfoDiv = document.getElementById("versionInfo");
+const updateStatusTextDiv = document.getElementById("updateStatusText");
+const versionMetaTextDiv = document.getElementById("versionMetaText");
 const checkUpdateBtn = document.getElementById("checkUpdateBtn");
 const openUpdatePageBtn = document.getElementById("openUpdatePageBtn");
 
@@ -19,39 +20,24 @@ const formatCheckedAt = (value) => {
 };
 
 const getUpdateStatusText = (info) => {
-  if (info.status === "update_available") return "새 릴리즈가 있습니다.";
-  if (info.status === "up_to_date") return "최신 릴리즈 기준 최신 버전입니다.";
-  if (info.status === "ahead_of_remote") return "현재 로컬 버전이 최신 릴리즈보다 높습니다.";
-  if (info.status === "no_release") return "아직 GitHub Release가 등록되지 않았습니다.";
+  if (info.status === "update_available") return "새 버전이 있습니다.";
+  if (info.status === "up_to_date") return `최신 버전 입니다. (현재 버전: ${info.currentVersion || "-"})`;
+  if (info.status === "ahead_of_remote") return `현재 버전이 최신 릴리즈보다 높습니다. (현재 버전: ${info.currentVersion || "-"})`;
+  if (info.status === "no_release") return "GitHub Release가 아직 없습니다.";
   if (info.status === "error") return "릴리즈 확인에 실패했습니다.";
   return "버전 상태를 아직 확인하지 않았습니다.";
 };
 
 const renderUpdateInfo = (info) => {
   if (!info) {
-    versionInfoDiv.innerText = "버전 정보를 불러오지 못했습니다.";
+    updateStatusTextDiv.innerText = "버전 정보를 불러오지 못했습니다.";
+    versionMetaTextDiv.innerText = "현재 버전: - , 최신 버전: -";
     openUpdatePageBtn.style.display = "none";
     return;
   }
 
-  versionInfoDiv.innerText = [
-    `현재 버전: ${info.currentVersion || "-"}`,
-    `최신 릴리즈 버전: ${info.latestVersion || "-"}`,
-    `상태: ${getUpdateStatusText(info)}`,
-    info.releaseTag ? `릴리즈 태그: ${info.releaseTag}` : "",
-    info.releaseName ? `릴리즈 이름: ${info.releaseName}` : "",
-    info.publishedAt ? `릴리즈 게시일: ${formatCheckedAt(info.publishedAt)}` : "",
-    `확인 시각: ${formatCheckedAt(info.checkedAt)}`,
-    info.hasUpdate
-      ? "안내: 릴리즈 페이지에서 새 버전을 받은 뒤 chrome://extensions 에서 다시 로드하세요."
-      : info.status === "no_release"
-        ? "안내: 첫 GitHub Release를 만들면 여기서 최신 버전 비교가 동작합니다."
-      : info.error
-        ? `오류: ${info.error}`
-        : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  updateStatusTextDiv.innerText = getUpdateStatusText(info);
+  versionMetaTextDiv.innerText = `현재 버전: ${info.currentVersion || "-"} , 최신 버전: ${info.latestVersion || "-"}`;
 
   openUpdatePageBtn.style.display =
     info.hasUpdate || info.status === "no_release" ? "block" : "none";
@@ -135,7 +121,8 @@ showDebugPanelInput.addEventListener("change", async () => {
 });
 
 checkUpdateBtn.addEventListener("click", async () => {
-  versionInfoDiv.innerText = "버전 확인 중...";
+  updateStatusTextDiv.innerText = "버전 확인 중...";
+  versionMetaTextDiv.innerText = "현재 버전: - , 최신 버전: -";
   await updateVersionInfo(true);
 });
 
