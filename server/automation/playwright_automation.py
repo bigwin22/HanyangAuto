@@ -25,6 +25,8 @@ STATUS_REFRESH_INTERVAL_SEC = 45
 POST_REFRESH_WAIT_SEC = 3
 INITIAL_STATUS_SYNC_ATTEMPTS = 4
 INITIAL_STATUS_SYNC_WAIT_SEC = 1
+PLAYBACK_VERIFY_WAIT_MS = 3_000
+PLAYBACK_VERIFY_POLL_SEC = 0.5
 DEFAULT_DURATION_SEC = 60 * 60
 MAX_LECTURE_RUNTIME_SEC = 3 * 60 * 60
 
@@ -150,10 +152,24 @@ def _parse_duration_seconds(texts: Iterable[str]) -> int:
     return DEFAULT_DURATION_SEC
 
 
+def _normalize_snapshot_texts(snapshot: Dict[str, Any]) -> Dict[str, str]:
+    status_parts = [str(part or "").strip() for part in snapshot.get("statusParts") or [] if str(part or "").strip()]
+    body_text = str(snapshot.get("bodyText") or "").strip()
+    return {
+        "status": " ".join(status_parts),
+        "body": body_text,
+        "status_parts": status_parts,
+    }
+
+
 def _get_lecture_availability_state(snapshot: Dict[str, Any]) -> Optional[str]:
-    body_text = str(snapshot.get("bodyText") or "")
-    status_parts = [str(part or "") for part in snapshot.get("statusParts") or []]
-    combined = " ".join(status_parts + [body_text])
+    return _get_lecture_availability_reason(snapshot)[0]
+
+
+def _get_lecture_availability_reason(snapshot: Dict[str, Any]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    normalized = _normalize_snapshot_texts(snapshot)
+    status_text = normalized["status"]
+    body_text = normalized["body"]
     scheduled_markers = [
         "학습이 가능합니다",
         "부터 학습이 가능합니다",
@@ -162,28 +178,110 @@ def _get_lecture_availability_state(snapshot: Dict[str, Any]) -> Optional[str]:
         "수강 예정",
         "아직 학습할 수 없습니다",
     ]
-    if any(marker in combined for marker in scheduled_markers):
-        return "scheduled"
+    for marker in scheduled_markers:
+        if marker in status_text:
+            return ("scheduled", "statusParts", marker)
 
     expired_markers = ["학습 기간이 종료되었습니다."]
-    if any(marker in combined for marker in expired_markers):
-        return "expired"
+    for marker in expired_markers:
+        if marker in status_text:
+            return ("expired", "statusParts", marker)
 
-    return None
+    if not normalized["status_parts"]:
+        for marker in scheduled_markers:
+            if marker in body_text:
+                return ("scheduled", "bodyText", marker)
+        for marker in expired_markers:
+            if marker in body_text:
+                return ("expired", "bodyText", marker)
+
+    return (None, None, None)
 
 
 def _is_non_required_recording(snapshot: Dict[str, Any], lecture: Optional[LectureItem] = None) -> bool:
-    body_text = str(snapshot.get("bodyText") or "")
-    status_parts = [str(part or "") for part in snapshot.get("statusParts") or []]
-    lecture_title = str(lecture.title if lecture else "")
-    combined = " ".join(status_parts + [body_text, lecture_title])
+    return _get_non_required_recording_reason(snapshot, lecture)[0]
+
+
+def _get_non_required_recording_reason(snapshot: Dict[str, Any], lecture: Optional[LectureItem] = None) -> tuple[bool, Optional[str]]:
+    normalized = _normalize_snapshot_texts(snapshot)
+    status_text = normalized["status"]
+    body_text = normalized["body"]
+    lecture_title = str(lecture.title if lecture else "").strip()
+    combined = " ".join([status_text, body_text, lecture_title]).strip()
+    if "출결 대상 아님" not in combined:
+        return (False, None)
     markers = [
         "강의녹화",
         "녹화",
         "대면",
         "대면 강의",
     ]
-    return any(marker in combined for marker in markers)
+    for marker in markers:
+        if marker in combined:
+            return (True, marker)
+    return (False, None)
+
+
+def _snapshot_max_media_second(snapshot: Dict[str, Any]) -> Optional[float]:
+    media_times = [float(media.get("currentTime") or 0) for media in snapshot.get("mediaStates") or []]
+    return max(media_times) if media_times else None
+
+
+def _snapshot_total_duration(snapshot: Dict[str, Any]) -> float:
+    timing = snapshot.get("timing") or {}
+    total = float(timing.get("totalSeconds") or 0)
+    if total > 0:
+        return total
+    durations = [float(media.get("duration") or 0) for media in snapshot.get("mediaStates") or []]
+    return max(durations) if durations else 0.0
+
+
+def _snapshot_has_running_media(snapshot: Dict[str, Any]) -> bool:
+    for media in snapshot.get("mediaStates") or []:
+        if media.get("ended"):
+            continue
+        if not media.get("paused", True):
+            return True
+    return False
+
+
+def _snapshot_has_ended_media(snapshot: Dict[str, Any]) -> bool:
+    return any(bool(media.get("ended")) for media in snapshot.get("mediaStates") or [])
+
+
+def _snapshot_looks_playing(snapshot: Dict[str, Any]) -> bool:
+    if _snapshot_has_running_media(snapshot):
+        return True
+    player_class = str(snapshot.get("playerClass") or "")
+    play_pause_class = str(snapshot.get("playPauseClass") or "")
+    looks_playing = any(token in player_class for token in ("vjs-playing",))
+    looks_playing = looks_playing or any(token in play_pause_class for token in ("vc-pctrl-on-play", "vc-pctrl-on-playing"))
+    looks_paused = any(token in player_class for token in ("vjs-paused",))
+    looks_paused = looks_paused or "vc-pctrl-on-pause" in play_pause_class
+    return looks_playing and not looks_paused
+
+
+def _playback_was_near_completion(snapshot: Dict[str, Any], media_second: Optional[float] = None) -> bool:
+    current = media_second if media_second is not None else _snapshot_max_media_second(snapshot)
+    total = _snapshot_total_duration(snapshot)
+    return total > 0 and current is not None and current >= max(total - 15, total * 0.95)
+
+
+def _classify_playback_transition(before: Dict[str, Any], after: Dict[str, Any]) -> str:
+    before_second = _snapshot_max_media_second(before)
+    after_second = _snapshot_max_media_second(after)
+    if _snapshot_looks_playing(after):
+        if before_second is not None and after_second is not None and after_second > before_second + 0.5:
+            return "progressing"
+        return "running"
+    if before_second is not None and after_second is not None:
+        if after_second > before_second + 0.5:
+            return "progressing"
+        if after_second + 30 < before_second and _playback_was_near_completion(before, before_second):
+            return "restarted_after_end"
+    if _snapshot_has_ended_media(after) and _playback_was_near_completion(before, before_second):
+        return "ended_near_completion"
+    return "stalled"
 
 
 def _read_attendance_snapshot(frame: Frame) -> Dict[str, Any]:
@@ -427,6 +525,61 @@ def _resume_prompt_visible(page: Page, attendance_frame: Optional[Frame]) -> boo
         return False
 
 
+def _invoke_media_play(frame: Frame) -> bool:
+    try:
+        return bool(
+            frame.evaluate(
+                """() => {
+                  const mediaList = Array.from(document.querySelectorAll("video, audio"));
+                  let invoked = false;
+                  for (const media of mediaList) {
+                    if (!media) continue;
+                    try {
+                      const result = media.play?.();
+                      if (result && typeof result.catch === "function") result.catch(() => {});
+                      invoked = true;
+                    } catch (error) {
+                      // ignore and keep trying other media elements
+                    }
+                  }
+                  return invoked;
+                }"""
+            )
+        )
+    except Exception:
+        return False
+
+
+def _wait_for_playback_confirmation(
+    page: Page,
+    attendance_frame: Optional[Frame],
+    logger: HanyangLogger,
+    stage: str,
+    baseline: Dict[str, Any],
+    wait_ms: int = PLAYBACK_VERIFY_WAIT_MS,
+) -> tuple[bool, Dict[str, Any], str]:
+    deadline = time.time() + (wait_ms / 1000)
+    last_snapshot = baseline
+    while time.time() < deadline:
+        time.sleep(PLAYBACK_VERIFY_POLL_SEC)
+        last_snapshot = _read_hycms_snapshot(page, attendance_frame)
+        transition = _classify_playback_transition(baseline, last_snapshot)
+        if transition in {"progressing", "running", "restarted_after_end", "ended_near_completion"}:
+            logger.info(
+                "playback",
+                f"playback confirmed after {stage} | transition={transition} | "
+                f"time={last_snapshot.get('timeText') or '-'} | media={last_snapshot.get('mediaStates')}",
+            )
+            return (True, last_snapshot, transition)
+    failure_reason = f"{stage}_still_{_classify_playback_transition(baseline, last_snapshot)}"
+    logger.info(
+        "playback",
+        f"playback attempt did not progress | reason={failure_reason} | "
+        f"time={last_snapshot.get('timeText') or '-'} | media={last_snapshot.get('mediaStates')}",
+    )
+    return (False, last_snapshot, failure_reason)
+
+
 def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
     attendance_frame = _find_attendance_frame(page)
     hycms = _wait_for_hycms_frame(page, attendance_frame, 10_000)
@@ -443,8 +596,18 @@ def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
         f"play={before.get('playPause', {}).get('selector') if isinstance(before.get('playPause'), dict) else '-'}",
     )
 
-    if _resume_prompt_visible(page, attendance_frame) and _accept_resume_prompt(page, attendance_frame, logger, wait_ms=1_000):
+    if _classify_playback_transition(before, before) in {"progressing", "running"}:
+        logger.info("playback", f"player already progressing | time={before.get('timeText') or '-'} | media={before.get('mediaStates')}")
         return True
+
+    last_snapshot = before
+    last_reason = "no_attempt_made"
+
+    if _resume_prompt_visible(page, attendance_frame) and _accept_resume_prompt(page, attendance_frame, logger, wait_ms=1_000):
+        ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, "resume_accepted", before)
+        if ok:
+            return True
+        hycms = _wait_for_hycms_frame(page, attendance_frame, 3_000) or hycms
 
     for selector in [
         "#front-screen > div > div.vc-front-screen-btn-container > div.vc-front-screen-btn-wrapper.video1-btn > div",
@@ -454,19 +617,21 @@ def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
     ]:
         if _click_selector(hycms, selector):
             logger.info("playback", f"front-screen selector clicked: {selector}")
-            time.sleep(1)
-            if _accept_resume_prompt(page, attendance_frame, logger):
+            ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, f"front_clicked:{selector}", last_snapshot)
+            if ok:
                 return True
-            after = _read_hycms_snapshot(page, attendance_frame)
-            logger.info("playback", f"snapshot after front-screen click | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
-            return True
+            if _accept_resume_prompt(page, attendance_frame, logger, wait_ms=1_500):
+                ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, "resume_after_front_click", last_snapshot)
+                if ok:
+                    return True
+            hycms = _wait_for_hycms_frame(page, attendance_frame, 3_000) or hycms
 
     if _click_if_visible(hycms, "재생"):
         logger.info("playback", "play button clicked")
-        time.sleep(1)
-        after = _read_hycms_snapshot(page, attendance_frame)
-        logger.info("playback", f"snapshot after text play click | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
-        return True
+        ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, "text_play_clicked", last_snapshot)
+        if ok:
+            return True
+        hycms = _wait_for_hycms_frame(page, attendance_frame, 3_000) or hycms
 
     for selector in [
         "#play-controller .vc-pctrl-play-pause-btn",
@@ -477,23 +642,31 @@ def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
     ]:
         if _click_selector(hycms, selector):
             logger.info("playback", f"play control selector clicked: {selector}")
-            time.sleep(1)
-            if _accept_resume_prompt(page, attendance_frame, logger):
+            ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, f"play_control_clicked:{selector}", last_snapshot)
+            if ok:
                 return True
-            after = _read_hycms_snapshot(page, attendance_frame)
-            logger.info("playback", f"snapshot after control click | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
+            if _accept_resume_prompt(page, attendance_frame, logger, wait_ms=1_500):
+                ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, "resume_after_control_click", last_snapshot)
+                if ok:
+                    return True
+            hycms = _wait_for_hycms_frame(page, attendance_frame, 3_000) or hycms
+
+    if _invoke_media_play(hycms):
+        logger.info("playback", "media play invoked via js")
+        ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, "js_play_invoked", last_snapshot)
+        if ok:
             return True
 
-    after = _read_hycms_snapshot(page, attendance_frame)
-    if any((media.get("currentTime") or 0) > 0 and not media.get("paused", True) for media in after.get("mediaStates") or []):
-        logger.info("playback", f"player already progressing | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
-        return True
-
     if _find_button_by_text(hycms, "일시정지").count() > 0:
+        after = _read_hycms_snapshot(page, attendance_frame)
         logger.info("playback", f"player already running | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
         return True
 
-    logger.info("playback", f"playback start failed | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
+    logger.info(
+        "playback",
+        f"playback start failed | reason={last_reason} | "
+        f"time={last_snapshot.get('timeText') or '-'} | media={last_snapshot.get('mediaStates')}",
+    )
     return False
 
 
@@ -626,15 +799,28 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     attendance_frame = _wait_for_attendance_frame(page)
 
     initial = _read_attendance_snapshot(attendance_frame)
-    availability_state = _get_lecture_availability_state(initial)
+    availability_state, availability_source, availability_marker = _get_lecture_availability_reason(initial)
+    non_required, non_required_marker = _get_non_required_recording_reason(initial, lecture)
     if availability_state == "scheduled":
-        logger.info("lecture", f"scheduled lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+        logger.info(
+            "lecture",
+            f"scheduled lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
+            f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+        )
         return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
     if availability_state == "expired":
-        logger.info("lecture", f"expired lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+        logger.info(
+            "lecture",
+            f"expired lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
+            f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+        )
         return {"learn": True, "msg": "expired lecture"}
-    if _is_non_required_recording(initial, lecture):
-        logger.info("lecture", f"non-required recording skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+    if non_required:
+        logger.info(
+            "lecture",
+            f"non-required recording skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
+            f"marker={non_required_marker or '-'}",
+        )
         return {"learn": True, "msg": "non-required recording"}
     if initial["completed"]:
         logger.info("lecture", f"already completed: {lecture.title}")
@@ -648,15 +834,28 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
             _refresh_status(attendance_frame, logger)
             attendance_frame = _wait_for_attendance_frame(page)
             initial = _read_attendance_snapshot(attendance_frame)
-            availability_state = _get_lecture_availability_state(initial)
+            availability_state, availability_source, availability_marker = _get_lecture_availability_reason(initial)
+            non_required, non_required_marker = _get_non_required_recording_reason(initial, lecture)
             if availability_state == "scheduled":
-                logger.info("lecture", f"scheduled lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+                logger.info(
+                    "lecture",
+                    f"scheduled lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
+                    f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+                )
                 return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
             if availability_state == "expired":
-                logger.info("lecture", f"expired lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+                logger.info(
+                    "lecture",
+                    f"expired lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
+                    f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+                )
                 return {"learn": True, "msg": "expired lecture"}
-            if _is_non_required_recording(initial, lecture):
-                logger.info("lecture", f"non-required recording skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']}")
+            if non_required:
+                logger.info(
+                    "lecture",
+                    f"non-required recording skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
+                    f"marker={non_required_marker or '-'}",
+                )
                 return {"learn": True, "msg": "non-required recording"}
             if initial["completed"]:
                 logger.info("lecture", f"already completed after sync: {lecture.title}")
@@ -671,21 +870,35 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     deadline = time.time() + min(int(duration_sec * 1.2) + 180, MAX_LECTURE_RUNTIME_SEC)
     last_refresh = 0.0
     last_media_second: Optional[float] = None
+    last_media_snapshot: Optional[Dict[str, Any]] = None
 
     logger.info("lecture", f"playback started: {lecture.title}")
 
     while time.time() < deadline:
         attendance_frame = _wait_for_attendance_frame(page)
         snapshot = _read_attendance_snapshot(attendance_frame)
-        availability_state = _get_lecture_availability_state(snapshot)
+        availability_state, availability_source, availability_marker = _get_lecture_availability_reason(snapshot)
+        non_required, non_required_marker = _get_non_required_recording_reason(snapshot, lecture)
         if availability_state == "scheduled":
-            logger.info("lecture", f"scheduled lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
+            logger.info(
+                "lecture",
+                f"scheduled lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']} | "
+                f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+            )
             return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
         if availability_state == "expired":
-            logger.info("lecture", f"expired lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
+            logger.info(
+                "lecture",
+                f"expired lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']} | "
+                f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+            )
             return {"learn": True, "msg": "expired lecture"}
-        if _is_non_required_recording(snapshot, lecture):
-            logger.info("lecture", f"non-required recording skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']}")
+        if non_required:
+            logger.info(
+                "lecture",
+                f"non-required recording skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']} | "
+                f"marker={non_required_marker or '-'}",
+            )
             return {"learn": True, "msg": "non-required recording"}
         if snapshot["completed"]:
             logger.info("lecture", f"completed: {lecture.title}")
@@ -694,18 +907,29 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
         if snapshot["hasInnerFrame"]:
             _ensure_playing(page, logger)
             media_snapshot = _read_hycms_snapshot(page, attendance_frame)
-            media_times = [float(media.get("currentTime") or 0) for media in media_snapshot.get("mediaStates") or []]
-            current_media_second = max(media_times) if media_times else None
+            current_media_second = _snapshot_max_media_second(media_snapshot)
             if current_media_second is not None:
                 if last_media_second is not None and current_media_second > last_media_second + 0.5:
                     logger.info(
                         "playback",
                         f"playback progressing | lecture={lecture.title} | second={current_media_second:.1f} | time={media_snapshot.get('timeText') or '-'}",
                     )
+                elif (
+                    last_media_second is not None
+                    and current_media_second + 30 < last_media_second
+                    and last_media_snapshot
+                    and _playback_was_near_completion(last_media_snapshot, last_media_second)
+                ):
+                    logger.info(
+                        "playback",
+                        f"playback restarted after end | lecture={lecture.title} | second={current_media_second:.1f} | "
+                        f"time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
+                    )
                 elif last_media_second is not None and current_media_second <= last_media_second + 0.1:
                     logger.info(
                         "playback",
-                        f"playback stalled | lecture={lecture.title} | second={current_media_second:.1f} | time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
+                        f"playback stalled | lecture={lecture.title} | second={current_media_second:.1f} | "
+                        f"time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
                     )
                 else:
                     logger.info(
@@ -713,6 +937,7 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
                         f"playback initial media state | lecture={lecture.title} | second={current_media_second:.1f} | time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
                     )
                 last_media_second = current_media_second
+                last_media_snapshot = media_snapshot
         elif snapshot["nonVideoHints"]:
             logger.info("lecture", f"non-video item treated as processed: {lecture.title}")
             return {"learn": True, "msg": "non-video attendance item"}
