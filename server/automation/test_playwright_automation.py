@@ -191,11 +191,19 @@ class NoPlayerHeuristicTests(unittest.TestCase):
         snapshot = make_snapshot(status_parts=["학습 진행 상태:", "0초(0%)", "미완료", "미결"])
         self.assertTrue(_is_static_pending_without_player(snapshot))
 
+    def test_incomplete_without_progress_details_is_detected(self):
+        snapshot = make_snapshot(status_parts=["학습 진행 상태:", "미완료"])
+        self.assertTrue(_is_static_pending_without_player(snapshot))
+
     def test_inner_frame_prevents_no_player_skip(self):
         snapshot = make_snapshot(
             status_parts=["학습 진행 상태:", "0초(0%)", "미완료", "미결"],
             has_inner_frame=True,
         )
+        self.assertFalse(_is_static_pending_without_player(snapshot))
+
+    def test_nonzero_progress_without_player_is_not_detected(self):
+        snapshot = make_snapshot(status_parts=["학습 진행 상태:", "19분 59초(58.76%)", "미완료", "미결"])
         self.assertFalse(_is_static_pending_without_player(snapshot))
 
     def test_direct_media_prevents_no_player_skip(self):

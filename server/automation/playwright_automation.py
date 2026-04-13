@@ -70,6 +70,16 @@ def _status_summary(snapshot: Dict[str, Any]) -> str:
     return " / ".join(parts) if parts else "-"
 
 
+def _status_has_time_progress(parts: List[str]) -> bool:
+    progress_pattern = re.compile(r"\d+초\(\d+(?:\.\d+)?%\)|\d+분\s*\d*초\(\d+(?:\.\d+)?%\)|\d+:\d{2}")
+    return any(progress_pattern.search(part) for part in parts)
+
+
+def _status_is_zero_progress(parts: List[str]) -> bool:
+    zero_markers = ("0초(0%)", "0분 0초(0%)", "00:00")
+    return any(marker in part for part in parts for marker in zero_markers)
+
+
 def _is_static_pending_without_player(snapshot: Dict[str, Any]) -> bool:
     parts = [str(part or "").strip() for part in snapshot.get("statusParts") or [] if str(part or "").strip()]
     if snapshot.get("hasInnerFrame"):
@@ -80,10 +90,11 @@ def _is_static_pending_without_player(snapshot: Dict[str, Any]) -> bool:
         return False
     if snapshot.get("completed"):
         return False
-    required_markers = {"0초(0%)", "미완료"}
-    if not required_markers.issubset(set(parts)):
+    if "미완료" not in parts:
         return False
-    return "미결" in parts or "출결 대상 아님" in parts
+    if _status_has_time_progress(parts):
+        return _status_is_zero_progress(parts)
+    return True
 
 
 def _snapshot_from_direct_media(snapshot: Dict[str, Any]) -> Dict[str, Any]:
