@@ -59,6 +59,8 @@ LectureItem = MODULE.LectureItem
 _classify_playback_transition = MODULE._classify_playback_transition
 _get_lecture_availability_reason = MODULE._get_lecture_availability_reason
 _get_non_required_recording_reason = MODULE._get_non_required_recording_reason
+_is_static_pending_without_player = MODULE._is_static_pending_without_player
+_snapshot_from_direct_media = MODULE._snapshot_from_direct_media
 
 
 def make_snapshot(
@@ -69,6 +71,9 @@ def make_snapshot(
     player_class="",
     play_pause_class="",
     timing=None,
+    has_inner_frame=False,
+    hycms_src="",
+    completed=False,
 ):
     return {
         "statusParts": status_parts or [],
@@ -77,6 +82,9 @@ def make_snapshot(
         "playerClass": player_class,
         "playPauseClass": play_pause_class,
         "timing": timing or {},
+        "hasInnerFrame": has_inner_frame,
+        "hycmsSrc": hycms_src,
+        "completed": completed,
     }
 
 
@@ -176,6 +184,34 @@ class PlaybackTransitionTests(unittest.TestCase):
             play_pause_class="vc-pctrl-on-playing",
         )
         self.assertEqual(_classify_playback_transition(before, after), "running")
+
+
+class NoPlayerHeuristicTests(unittest.TestCase):
+    def test_static_pending_without_player_is_detected(self):
+        snapshot = make_snapshot(status_parts=["학습 진행 상태:", "0초(0%)", "미완료", "미결"])
+        self.assertTrue(_is_static_pending_without_player(snapshot))
+
+    def test_inner_frame_prevents_no_player_skip(self):
+        snapshot = make_snapshot(
+            status_parts=["학습 진행 상태:", "0초(0%)", "미완료", "미결"],
+            has_inner_frame=True,
+        )
+        self.assertFalse(_is_static_pending_without_player(snapshot))
+
+    def test_direct_media_prevents_no_player_skip(self):
+        snapshot = make_snapshot(
+            status_parts=["학습 진행 상태:", "0초(0%)", "미완료", "미결"],
+            has_inner_frame=False,
+        )
+        snapshot["hasDirectMedia"] = True
+        snapshot["directMediaStates"] = [media(paused=False, current_time=3, duration=120)]
+        self.assertFalse(_is_static_pending_without_player(snapshot))
+
+    def test_direct_media_snapshot_conversion(self):
+        snapshot = make_snapshot()
+        snapshot["directMediaStates"] = [media(paused=False, current_time=12, duration=120)]
+        converted = _snapshot_from_direct_media(snapshot)
+        self.assertEqual(converted["mediaStates"][0]["currentTime"], 12)
 
 
 if __name__ == "__main__":

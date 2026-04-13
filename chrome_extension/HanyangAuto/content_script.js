@@ -168,10 +168,34 @@ const fetchCoursesFromDashboardApi = async () => {
     .filter((course) => course.id);
 };
 
+const isCompletedLectureItem = (item) => {
+  const candidates = [
+    item?.completion_requirement?.completed,
+    item?.completion_requirement?.fulfilled,
+    item?.completionRequirement?.completed,
+    item?.completionRequirement?.fulfilled,
+    item?.module_item_completion_requirement?.completed,
+    item?.module_item_completion_requirement?.fulfilled,
+  ];
+  if (candidates.some((value) => value === true)) return true;
+
+  const textCandidates = [
+    item?.completion_status,
+    item?.completionState,
+    item?.completion_requirement?.status,
+    item?.module_item_completion_requirement?.status,
+  ]
+    .map((value) => normalizeText(String(value || "")).toLowerCase())
+    .filter(Boolean);
+
+  return textCandidates.some((value) => ["completed", "complete", "done", "passed"].includes(value));
+};
+
 const fetchLectureItemsForCourse = async (courseId) => {
   const modules = await fetchJson(`/api/v1/courses/${courseId}/modules?include[]=items&per_page=100`);
   if (!Array.isArray(modules)) return [];
   const lectures = [];
+  let skippedCompletedCount = 0;
   for (const module of modules) {
     for (const item of module.items || []) {
       const contentId = String(item.content_id || "");
@@ -179,6 +203,10 @@ const fetchLectureItemsForCourse = async (courseId) => {
       if (item.type !== "ExternalTool") continue;
       if (contentId !== "138" && !externalUrl.includes("/learningx/lti/lecture_attendance/items/view/")) continue;
       if (!item.html_url) continue;
+      if (isCompletedLectureItem(item)) {
+        skippedCompletedCount += 1;
+        continue;
+      }
       lectures.push({
         courseId,
         moduleName: module.name || "",
@@ -189,17 +217,19 @@ const fetchLectureItemsForCourse = async (courseId) => {
       });
     }
   }
-  return lectures;
+  return { lectures, skippedCompletedCount };
 };
 
 const discoverLectures = async () => {
   const courses = await fetchCoursesFromDashboardApi();
   const lectures = [];
+  let skippedCompletedCount = 0;
   for (const course of courses) {
-    const items = await fetchLectureItemsForCourse(course.id);
-    lectures.push(...items);
+    const result = await fetchLectureItemsForCourse(course.id);
+    lectures.push(...result.lectures);
+    skippedCompletedCount += result.skippedCompletedCount;
   }
-  return lectures;
+  return { lectures, skippedCompletedCount };
 };
 
 const isDashboardPage = () =>
@@ -230,13 +260,21 @@ const handleTopFrame = async (store) => {
     }
 
     try {
-      const lectures = await discoverLectures();
+      const { lectures, skippedCompletedCount } = await discoverLectures();
       if (lectures.length === 0) {
-        await reportDebug("discover_empty", "수강 가능한 동영상 강의를 찾지 못했습니다.");
+        const detail =
+          skippedCompletedCount > 0
+            ? `미완료 동영상 강의를 찾지 못했습니다. API 완료 강의 ${skippedCompletedCount}개 제외`
+            : "수강 가능한 동영상 강의를 찾지 못했습니다.";
+        await reportDebug("discover_empty", detail);
         return;
       }
       await send("LECTURES_DISCOVERED", { lectures });
-      await reportDebug("lectures_discovered", `강의 ${lectures.length}개 수집`);
+      const detail =
+        skippedCompletedCount > 0
+          ? `강의 ${lectures.length}개 수집, API 완료 강의 ${skippedCompletedCount}개 제외`
+          : `강의 ${lectures.length}개 수집`;
+      await reportDebug("lectures_discovered", detail);
     } catch (error) {
       await reportDebug("discover_error", `강의 목록 수집 실패: ${error.message}`);
     }

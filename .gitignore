@@ -11,3 +11,4 @@ __pycache__/
 /server/data
 /server/logs
 .DS_Store
+treeCommand.sh

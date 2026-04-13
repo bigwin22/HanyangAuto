@@ -29,6 +29,7 @@ PLAYBACK_VERIFY_WAIT_MS = 3_000
 PLAYBACK_VERIFY_POLL_SEC = 0.5
 DEFAULT_DURATION_SEC = 60 * 60
 MAX_LECTURE_RUNTIME_SEC = 3 * 60 * 60
+NO_PLAYER_SKIP_THRESHOLD_SEC = 90
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,33 @@ def _status_summary(snapshot: Dict[str, Any]) -> str:
     return " / ".join(parts) if parts else "-"
 
 
+def _is_static_pending_without_player(snapshot: Dict[str, Any]) -> bool:
+    parts = [str(part or "").strip() for part in snapshot.get("statusParts") or [] if str(part or "").strip()]
+    if snapshot.get("hasInnerFrame"):
+        return False
+    if snapshot.get("hycmsSrc"):
+        return False
+    if snapshot.get("hasDirectMedia"):
+        return False
+    if snapshot.get("completed"):
+        return False
+    required_markers = {"0초(0%)", "미완료"}
+    if not required_markers.issubset(set(parts)):
+        return False
+    return "미결" in parts or "출결 대상 아님" in parts
+
+
+def _snapshot_from_direct_media(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    direct_media = snapshot.get("directMediaStates") or []
+    return {
+        "mediaStates": direct_media,
+        "timing": {},
+        "timeText": "-",
+        "playerClass": "",
+        "playPauseClass": "",
+    }
+
+
 def _log_lecture_event(
     logger: HanyangLogger,
     event: str,
@@ -105,6 +133,32 @@ def _absolute_lms_url(url: str) -> str:
     if url.startswith("/"):
         return f"{LMS_ORIGIN}{url}"
     return f"{LMS_ORIGIN}/{url}"
+
+
+def _is_completed_lecture_item(item: Dict[str, Any]) -> bool:
+    completion_requirement = item.get("completion_requirement") or {}
+    alt_completion_requirement = item.get("completionRequirement") or {}
+    module_completion_requirement = item.get("module_item_completion_requirement") or {}
+
+    candidates = [
+        completion_requirement.get("completed"),
+        completion_requirement.get("fulfilled"),
+        alt_completion_requirement.get("completed"),
+        alt_completion_requirement.get("fulfilled"),
+        module_completion_requirement.get("completed"),
+        module_completion_requirement.get("fulfilled"),
+    ]
+    if any(value is True for value in candidates):
+        return True
+
+    text_candidates = [
+        item.get("completion_status"),
+        item.get("completionState"),
+        completion_requirement.get("status"),
+        module_completion_requirement.get("status"),
+    ]
+    normalized = {str(value or "").strip().lower() for value in text_candidates if str(value or "").strip()}
+    return bool(normalized & {"completed", "complete", "done", "passed"})
 
 
 def _parse_canvas_json(text: str) -> Any:
@@ -333,6 +387,15 @@ def _read_attendance_snapshot(frame: Frame) -> Dict[str, Any]:
     return frame.evaluate(
         """() => {
           const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
+          const queryVisible = (selectors) => {
+            for (const selector of selectors) {
+              const element = document.querySelector(selector);
+              if (!element) continue;
+              const rect = element.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) return { selector, text: normalize(element.textContent) };
+            }
+            return null;
+          };
           const refreshButton = Array.from(document.querySelectorAll("button"))
             .find((button) => normalize(button.textContent) === "학습 상태 확인");
           const parent = refreshButton?.parentElement || null;
@@ -346,6 +409,16 @@ def _read_attendance_snapshot(frame: Frame) -> Dict[str, Any]:
           const completed = statusParts.includes("완료") || bodyText.includes("학습 진행 상태: 완료");
           const nonVideoHints = ["교안", "pdf", "파일"].some((token) => bodyText.toLowerCase().includes(token));
           const hycmsFrame = document.querySelector('iframe[src*="hycms.hanyang.ac.kr"]');
+          const directMediaStates = Array.from(document.querySelectorAll("video, audio")).map((media, index) => ({
+            index,
+            paused: !!media.paused,
+            ended: !!media.ended,
+            muted: !!media.muted,
+            currentTime: Number(media.currentTime || 0),
+            duration: Number(media.duration || 0),
+            readyState: Number(media.readyState || 0),
+            tag: media.tagName,
+          }));
           return {
             statusParts,
             bodyText,
@@ -354,6 +427,16 @@ def _read_attendance_snapshot(frame: Frame) -> Dict[str, Any]:
             hasInnerFrame: Boolean(document.querySelector("iframe")),
             hycmsSrc: hycmsFrame?.getAttribute("src") || "",
             nonVideoHints,
+            hasDirectMedia: directMediaStates.length > 0,
+            directMediaStates,
+            directPlayControl: queryVisible([
+              "button[aria-label*='재생']",
+              "button[title*='재생']",
+              ".vjs-big-play-button",
+              ".vjs-play-control",
+              "video",
+              "audio",
+            ]),
           };
         }"""
     )
@@ -601,6 +684,42 @@ def _invoke_media_play(frame: Frame) -> bool:
         return False
 
 
+def _invoke_attendance_media_play(frame: Frame) -> bool:
+    try:
+        return bool(
+            frame.evaluate(
+                """() => {
+                  const mediaList = Array.from(document.querySelectorAll("video, audio"));
+                  let invoked = false;
+                  for (const media of mediaList) {
+                    try {
+                      const result = media.play?.();
+                      if (result && typeof result.catch === "function") result.catch(() => {});
+                      invoked = true;
+                    } catch (error) {
+                      // continue
+                    }
+                  }
+                  if (invoked) return true;
+                  const clickable = Array.from(document.querySelectorAll("button, [role='button'], .vjs-big-play-button, .vjs-play-control"));
+                  for (const element of clickable) {
+                    const text = (element.textContent || "").replace(/\\s+/g, " ").trim();
+                    const title = (element.getAttribute("title") || "").replace(/\\s+/g, " ").trim();
+                    const aria = (element.getAttribute("aria-label") || "").replace(/\\s+/g, " ").trim();
+                    if (![text, title, aria].some((value) => value.includes("재생") || value.toLowerCase().includes("play"))) continue;
+                    if (typeof element.click === "function") {
+                      element.click();
+                      return true;
+                    }
+                  }
+                  return false;
+                }"""
+            )
+        )
+    except Exception:
+        return False
+
+
 def _wait_for_playback_confirmation(
     page: Page,
     attendance_frame: Optional[Frame],
@@ -816,6 +935,7 @@ def _discover_courses(page: Page, logger: HanyangLogger) -> List[Dict[str, str]]
 
 def _discover_lecture_items(page: Page, course_ids: List[Dict[str, str]], logger: HanyangLogger) -> List[LectureItem]:
     lectures: List[LectureItem] = []
+    skipped_completed = 0
     for course in course_ids:
         payload = _fetch_json(page, MODULES_API.format(course_id=course["id"]))
         if not isinstance(payload, list):
@@ -832,6 +952,9 @@ def _discover_lecture_items(page: Page, course_ids: List[Dict[str, str]], logger
                 html_url = _absolute_lms_url(str(item.get("html_url") or ""))
                 if not html_url:
                     continue
+                if _is_completed_lecture_item(item):
+                    skipped_completed += 1
+                    continue
                 lectures.append(
                     LectureItem(
                         course_id=course["id"],
@@ -843,7 +966,13 @@ def _discover_lecture_items(page: Page, course_ids: List[Dict[str, str]], logger
                         content_id=content_id or None,
                     )
                 )
-    logger.event("discovery", "lecture_items_discovered", "lecture attendance items discovered", count=len(lectures))
+    logger.event(
+        "discovery",
+        "lecture_items_discovered",
+        "lecture attendance items discovered",
+        count=len(lectures),
+        skipped_completed=skipped_completed,
+    )
     return lectures
 
 
@@ -982,6 +1111,7 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     last_refresh = 0.0
     last_media_second: Optional[float] = None
     last_media_snapshot: Optional[Dict[str, Any]] = None
+    no_player_started_at: Optional[float] = None
 
     _log_lecture_event(
         logger,
@@ -1046,6 +1176,31 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
             )
             return {"learn": True, "msg": "completed"}
 
+        if _is_static_pending_without_player(snapshot):
+            if no_player_started_at is None:
+                no_player_started_at = time.time()
+                _log_lecture_event(
+                    logger,
+                    "lecture_no_player_detected",
+                    lecture,
+                    "playable media not detected yet",
+                    attendance_status=snapshot["statusParts"] or ["(empty)"],
+                    no_player_elapsed_sec=0,
+                )
+            elif time.time() - no_player_started_at >= NO_PLAYER_SKIP_THRESHOLD_SEC:
+                _log_lecture_event(
+                    logger,
+                    "lecture_skipped",
+                    lecture,
+                    "no playable media detected; skipped",
+                    outcome="non_playable_attendance_item",
+                    attendance_status=snapshot["statusParts"] or ["(empty)"],
+                    no_player_elapsed_sec=int(time.time() - no_player_started_at),
+                )
+                return {"learn": True, "msg": "non-playable attendance item"}
+        else:
+            no_player_started_at = None
+
         if snapshot["hasInnerFrame"]:
             _ensure_playing(page, logger)
             media_snapshot = _read_hycms_snapshot(page, attendance_frame)
@@ -1093,6 +1248,50 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
                         "playback initial media state",
                         second=round(current_media_second, 1),
                         player_time=media_snapshot.get("timeText") or "-",
+                        media=media_snapshot.get("mediaStates"),
+                    )
+                last_media_second = current_media_second
+                last_media_snapshot = media_snapshot
+        elif snapshot.get("hasDirectMedia"):
+            if _invoke_attendance_media_play(attendance_frame):
+                _log_playback_event(
+                    logger,
+                    "attendance_media_play_invoked",
+                    lecture,
+                    "attendance frame media play invoked",
+                    media=snapshot.get("directMediaStates"),
+                )
+            media_snapshot = _snapshot_from_direct_media(_read_attendance_snapshot(attendance_frame))
+            current_media_second = _snapshot_max_media_second(media_snapshot)
+            if current_media_second is not None:
+                if last_media_second is not None and current_media_second > last_media_second + 0.5:
+                    _log_playback_event(
+                        logger,
+                        "playback_progressing",
+                        lecture,
+                        "direct media playback progressing",
+                        second=round(current_media_second, 1),
+                        player_time="-",
+                        media=media_snapshot.get("mediaStates"),
+                    )
+                elif last_media_second is not None and current_media_second <= last_media_second + 0.1:
+                    _log_playback_event(
+                        logger,
+                        "playback_stalled",
+                        lecture,
+                        "direct media playback stalled",
+                        second=round(current_media_second, 1),
+                        player_time="-",
+                        media=media_snapshot.get("mediaStates"),
+                    )
+                else:
+                    _log_playback_event(
+                        logger,
+                        "playback_initial_state",
+                        lecture,
+                        "direct media initial state",
+                        second=round(current_media_second, 1),
+                        player_time="-",
                         media=media_snapshot.get("mediaStates"),
                     )
                 last_media_second = current_media_second
@@ -1194,6 +1393,7 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_
             total_courses=len(courses),
             total_lectures=len(lectures),
             pending_lectures=len(pending),
+            previously_learned_filtered=len(lectures) - len(pending),
         )
 
         for lecture in pending:

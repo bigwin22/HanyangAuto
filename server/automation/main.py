@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
@@ -29,12 +30,17 @@ server_logger = HanyangLogger("server", user_id="receive_server")
 executor = ThreadPoolExecutor(max_workers=5)
 scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Seoul"))
 verify_login_limiter = SlidingWindowRateLimiter()
+running_users_lock = threading.Lock()
+running_users: set[str] = set()
 
 INTERNAL_API_TOKEN = os.getenv("INTERNAL_API_TOKEN", "").strip()
 VERIFY_LOGIN_IP_LIMIT = int(os.getenv("VERIFY_LOGIN_IP_LIMIT", "30"))
 VERIFY_LOGIN_ACCOUNT_LIMIT = int(os.getenv("VERIFY_LOGIN_ACCOUNT_LIMIT", "10"))
 VERIFY_LOGIN_WINDOW_SEC = int(os.getenv("VERIFY_LOGIN_WINDOW_SEC", "300"))
 AUTOMATION_CORS_ALLOW_ORIGINS = os.getenv("AUTOMATION_CORS_ALLOW_ORIGINS", "").strip()
+AUTO_RESUME_USERS_ON_STARTUP = os.getenv("AUTO_RESUME_USERS_ON_STARTUP", "true").lower() not in {"0", "false", "no"}
+AUTOMATION_SCHEDULE_DELAY_SEC = int(os.getenv("AUTOMATION_SCHEDULE_DELAY_SEC", "15"))
+STARTUP_AUTOMATION_DELAY_SEC = int(os.getenv("STARTUP_AUTOMATION_DELAY_SEC", "5"))
 
 if not INTERNAL_API_TOKEN:
     raise ValueError("INTERNAL_API_TOKEN must be set.")
@@ -45,9 +51,15 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     scheduler.add_job(run_daily_automation, CronTrigger(hour=7, minute=0), id="daily_automation")
     server_logger.info("server", "Scheduler started with daily automation at 7:00 AM KST")
+    startup_resume_task = None
+    if AUTO_RESUME_USERS_ON_STARTUP:
+        startup_resume_task = asyncio.create_task(run_startup_automation())
+        server_logger.info("server", "Startup automation recovery task scheduled")
     try:
         yield
     finally:
+        if startup_resume_task and not startup_resume_task.done():
+            startup_resume_task.cancel()
         server_logger.info("server", "Server is shutting down. Waiting for all running jobs to complete.")
         scheduler.shutdown(wait=True)
         executor.shutdown(wait=True)
@@ -116,6 +128,18 @@ def _reset_verify_login_account_rate_limit(user_id: str) -> None:
 def automation_task_wrapper(user_id: str, encrypted_pwd: str, user_num: int, learned_lectures: list):
     run_id = HanyangLogger.new_run_id("automation")
     user_logger = HanyangLogger("user", user_id=str(user_id), default_fields={"run_id": run_id})
+    with running_users_lock:
+        if user_id in running_users:
+            user_logger.event(
+                "automation",
+                "automation_task_skipped",
+                "duplicate automation task skipped",
+                user_num=user_num,
+                outcome="duplicate_user_run",
+            )
+            return
+        running_users.add(user_id)
+
     user_logger.event("automation", "automation_task_enqueued", "automation task started", user_num=user_num)
 
     try:
@@ -142,6 +166,9 @@ def automation_task_wrapper(user_id: str, encrypted_pwd: str, user_num: int, lea
             update_user_status(user_id, "error")
         except Exception as db_exc:
             user_logger.error("automation", f"Failed to update status to error: {mask_sensitive_text(db_exc)}", event="automation_status_update_failed", user_num=user_num)
+    finally:
+        with running_users_lock:
+            running_users.discard(user_id)
 
 
 def schedule_user_from_db(user_row):
@@ -158,22 +185,33 @@ def schedule_user_from_db(user_row):
     )
 
 
-async def run_daily_automation():
-    server_logger.info("scheduler", "Starting daily automation for all users")
+async def schedule_all_users(reason: str):
     loop = asyncio.get_running_loop()
     users = await loop.run_in_executor(None, get_all_users)
-    server_logger.info("scheduler", f"Found {len(users)} users for daily automation")
+    server_logger.info("scheduler", f"Found {len(users)} users for {reason} automation")
 
     for index, user in enumerate(users):
         try:
             schedule_user_from_db(user)
-            server_logger.info("scheduler", f"Scheduled automation for user: {user[1]}")
+            server_logger.info("scheduler", f"Scheduled {reason} automation for user: {user[1]}")
             if (index + 1) < len(users):
-                await asyncio.sleep(15)
+                await asyncio.sleep(AUTOMATION_SCHEDULE_DELAY_SEC)
         except Exception as exc:
-            server_logger.error("scheduler", f"Failed to schedule automation for user {user[1]}: {mask_sensitive_text(exc)}")
+            server_logger.error("scheduler", f"Failed to schedule {reason} automation for user {user[1]}: {mask_sensitive_text(exc)}")
 
-    server_logger.info("scheduler", "Daily automation scheduling completed")
+    server_logger.info("scheduler", f"{reason.capitalize()} automation scheduling completed")
+
+
+async def run_startup_automation():
+    if STARTUP_AUTOMATION_DELAY_SEC > 0:
+        await asyncio.sleep(STARTUP_AUTOMATION_DELAY_SEC)
+    server_logger.info("scheduler", "Starting startup automation recovery for all users")
+    await schedule_all_users("startup")
+
+
+async def run_daily_automation():
+    server_logger.info("scheduler", "Starting daily automation for all users")
+    await schedule_all_users("daily")
 
 
 @app.post("/start-automation", dependencies=[Depends(require_internal_request)])
