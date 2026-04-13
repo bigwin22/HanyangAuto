@@ -15,11 +15,27 @@ security_module = types.ModuleType("utils.security")
 
 
 class DummyLogger:
+    def __init__(self, *args, **kwargs):
+        return None
+
     def info(self, *args, **kwargs):
         return None
 
     def error(self, *args, **kwargs):
         return None
+
+    def warn(self, *args, **kwargs):
+        return None
+
+    def debug(self, *args, **kwargs):
+        return None
+
+    def event(self, *args, **kwargs):
+        return None
+
+    @staticmethod
+    def new_run_id(prefix="run"):
+        return f"{prefix}-test"
 
 
 logger_module.HanyangLogger = DummyLogger

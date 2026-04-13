@@ -1,9 +1,10 @@
 import os
 import logging
 import time
+import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import Optional
+from typing import Any, Dict, Optional
 from logging.handlers import RotatingFileHandler
 
 # 서울 시간대
@@ -49,20 +50,19 @@ def get_log_path(log_type: str = 'system', user_id: Optional[str] = None):
     return os.path.join(path, f'log1.log')
 
 class HanyangLogger:
-    def __init__(self, log_type: str = 'system', user_id: Optional[str] = None):
+    def __init__(self, log_type: str = 'system', user_id: Optional[str] = None, default_fields: Optional[Dict[str, Any]] = None):
         self.log_type = log_type
         self.user_id = user_id
         self.current_date = None
         self.logger = logging.getLogger(f'{log_type}_{user_id or "system"}')
         self.logger.setLevel(logging.DEBUG)
         self.file_handler = None
+        self.default_fields = default_fields.copy() if default_fields else {}
         self._setup_logger()
 
     def _setup_logger(self):
         """로거 설정을 초기화하거나 업데이트합니다."""
-        # 기존 핸들러 제거
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
+        self.close()
         
         self.logger.propagate = False
         
@@ -89,30 +89,93 @@ class HanyangLogger:
             console_handler.setFormatter(formatter)
             self.logger.addHandler(console_handler)
 
+    def close(self):
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+            try:
+                handler.flush()
+            except Exception:
+                pass
+            try:
+                handler.close()
+            except Exception:
+                pass
+
     def _check_date_change(self):
         """날짜가 바뀌었는지 확인하고 필요시 로거를 재설정합니다."""
         current_date = datetime.now(KST).strftime('%Y%m%d')
         if self.current_date != current_date:
             self._setup_logger()
 
-    def log(self, level, subject, message):
+    @staticmethod
+    def new_run_id(prefix: str = "run") -> str:
+        timestamp = datetime.now(KST).strftime('%Y%m%d-%H%M%S')
+        return f"{prefix}-{timestamp}-{uuid.uuid4().hex[:8]}"
+
+    def with_context(self, **fields):
+        merged = self.default_fields.copy()
+        merged.update({key: value for key, value in fields.items() if value is not None})
+        return HanyangLogger(self.log_type, self.user_id, default_fields=merged)
+
+    def _stringify_value(self, value: Any) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if value is None:
+            return "-"
+        if isinstance(value, float):
+            return f"{value:.3f}".rstrip("0").rstrip(".")
+        if isinstance(value, (list, tuple, set)):
+            return "[" + ",".join(self._stringify_value(item) for item in value) + "]"
+        text = str(value).replace("\n", "\\n").strip()
+        if not text:
+            return "-"
+        if any(char.isspace() for char in text) or "|" in text or "=" in text:
+            escaped = text.replace('"', '\\"')
+            return f'"{escaped}"'
+        return text
+
+    def _format_fields(self, fields: Dict[str, Any]) -> str:
+        merged = self.default_fields.copy()
+        merged.update({key: value for key, value in fields.items() if value is not None})
+        if not merged:
+            return ""
+        ordered = []
+        if "event" in merged:
+            ordered.append(("event", merged.pop("event")))
+        for key in sorted(merged.keys()):
+            ordered.append((key, merged[key]))
+        return " | " + " ".join(f"{key}={self._stringify_value(value)}" for key, value in ordered)
+
+    def log(self, level, subject, message, **fields):
         self._check_date_change()  # 날짜 변경 확인
         extra = {'subject': subject}
         if level not in LOG_LEVELS:
             level = 'INFO'
-        self.logger.log(LOG_LEVELS[level], message, extra=extra)
+        rendered_message = f"{message}{self._format_fields(fields)}"
+        self.logger.log(LOG_LEVELS[level], rendered_message, extra=extra)
 
-    def info(self, subject, message):
-        self.log('INFO', subject, message)
+    def event(self, subject, event, message="", level="INFO", **fields):
+        payload = {"event": event}
+        payload.update(fields)
+        self.log(level, subject, message or event, **payload)
 
-    def warn(self, subject, message):
-        self.log('WARN', subject, message)
+    def info(self, subject, message, **fields):
+        self.log('INFO', subject, message, **fields)
 
-    def error(self, subject, message):
-        self.log('ERROR', subject, message)
+    def warn(self, subject, message, **fields):
+        self.log('WARN', subject, message, **fields)
 
-    def debug(self, subject, message):
-        self.log('DEBUG', subject, message)
+    def error(self, subject, message, **fields):
+        self.log('ERROR', subject, message, **fields)
+
+    def debug(self, subject, message, **fields):
+        self.log('DEBUG', subject, message, **fields)
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
 # 사용 예시:
 # logger = HanyangLogger('system')

@@ -114,13 +114,14 @@ def _reset_verify_login_account_rate_limit(user_id: str) -> None:
 
 
 def automation_task_wrapper(user_id: str, encrypted_pwd: str, user_num: int, learned_lectures: list):
-    user_logger = HanyangLogger("user", user_id=str(user_id))
-    user_logger.info("automation", f"Automation task started (UserNum: {user_num})")
+    run_id = HanyangLogger.new_run_id("automation")
+    user_logger = HanyangLogger("user", user_id=str(user_id), default_fields={"run_id": run_id})
+    user_logger.event("automation", "automation_task_enqueued", "automation task started", user_num=user_num)
 
     try:
         plain_pwd = decrypt_password(encrypted_pwd)
     except Exception as exc:
-        user_logger.error("automation", f"Password decryption failed: {mask_sensitive_text(exc)}")
+        user_logger.error("automation", f"Password decryption failed: {mask_sensitive_text(exc)}", event="password_decryption_failed", user_num=user_num)
         update_user_status(user_id, "error")
         return
 
@@ -133,13 +134,14 @@ def automation_task_wrapper(user_id: str, encrypted_pwd: str, user_num: int, lea
             pwd=plain_pwd,
             learned_lectures=learned_lectures,
             db_add_learned=db_add_learned_callback,
+            run_id=run_id,
         )
     except Exception as exc:
-        user_logger.error("automation", f"Unexpected automation error: {mask_sensitive_text(exc)}")
+        user_logger.error("automation", f"Unexpected automation error: {mask_sensitive_text(exc)}", event="automation_task_unexpected_error", user_num=user_num)
         try:
             update_user_status(user_id, "error")
         except Exception as db_exc:
-            user_logger.error("automation", f"Failed to update status to error: {mask_sensitive_text(db_exc)}")
+            user_logger.error("automation", f"Failed to update status to error: {mask_sensitive_text(db_exc)}", event="automation_status_update_failed", user_num=user_num)
 
 
 def schedule_user_from_db(user_row):

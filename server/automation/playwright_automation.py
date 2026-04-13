@@ -52,6 +52,47 @@ class LectureItem:
         return {value for value in aliases if value}
 
 
+def _lecture_log_fields(lecture: Optional[LectureItem]) -> Dict[str, Any]:
+    if not lecture:
+        return {}
+    return {
+        "course_id": lecture.course_id,
+        "module_name": lecture.module_name,
+        "item_id": lecture.item_id,
+        "lecture_title": lecture.title,
+        "content_id": lecture.content_id or "-",
+    }
+
+
+def _status_summary(snapshot: Dict[str, Any]) -> str:
+    parts = [str(part or "").strip() for part in snapshot.get("statusParts") or [] if str(part or "").strip()]
+    return " / ".join(parts) if parts else "-"
+
+
+def _log_lecture_event(
+    logger: HanyangLogger,
+    event: str,
+    lecture: Optional[LectureItem] = None,
+    message: Optional[str] = None,
+    **fields: Any,
+) -> None:
+    payload = _lecture_log_fields(lecture)
+    payload.update(fields)
+    logger.event("lecture", event, message or event, **payload)
+
+
+def _log_playback_event(
+    logger: HanyangLogger,
+    event: str,
+    lecture: Optional[LectureItem] = None,
+    message: Optional[str] = None,
+    **fields: Any,
+) -> None:
+    payload = _lecture_log_fields(lecture)
+    payload.update(fields)
+    logger.event("playback", event, message or event, **payload)
+
+
 def _strip_query(url: str) -> str:
     return url.split("?", 1)[0]
 
@@ -128,9 +169,13 @@ def _submit_login_form(page: Page, user_id: str, password: str, logger: HanyangL
     code = str(payload.get("code") or "")
     msg = str(payload.get("msg") or "")
     url = str(payload.get("url") or "")
-    logger.info(
+    logger.event(
         "login",
-        f"login_submit result: code={code}, url={mask_sensitive_url(url) or '-'}, msg={mask_sensitive_text(msg) or '-'}",
+        "login_submit_result",
+        "login_submit result",
+        code=code,
+        response_url=mask_sensitive_url(url) or "-",
+        response_message=mask_sensitive_text(msg) or "-",
     )
     return {
         "status": int(result["status"]),
@@ -496,10 +541,16 @@ def _accept_resume_prompt(page: Page, attendance_frame: Optional[Frame], logger:
     while time.time() < deadline:
         hycms = _wait_for_hycms_frame(page, attendance_frame, 1_000)
         if hycms and (_click_if_visible(hycms, "예") or _click_resume_prompt(hycms)):
-            logger.info("playback", "resume prompt accepted")
+            logger.event("playback", "resume_prompt_accepted", "resume prompt accepted")
             time.sleep(1)
             after = _read_hycms_snapshot(page, attendance_frame)
-            logger.info("playback", f"snapshot after resume | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
+            logger.event(
+                "playback",
+                "playback_snapshot_after_resume",
+                "snapshot after resume",
+                player_time=after.get("timeText") or "-",
+                media=after.get("mediaStates"),
+            )
             return True
         time.sleep(0.5)
     return False
@@ -565,17 +616,25 @@ def _wait_for_playback_confirmation(
         last_snapshot = _read_hycms_snapshot(page, attendance_frame)
         transition = _classify_playback_transition(baseline, last_snapshot)
         if transition in {"progressing", "running", "restarted_after_end", "ended_near_completion"}:
-            logger.info(
+            logger.event(
                 "playback",
-                f"playback confirmed after {stage} | transition={transition} | "
-                f"time={last_snapshot.get('timeText') or '-'} | media={last_snapshot.get('mediaStates')}",
+                "playback_confirmed",
+                f"playback confirmed after {stage}",
+                stage=stage,
+                transition=transition,
+                player_time=last_snapshot.get("timeText") or "-",
+                media=last_snapshot.get("mediaStates"),
             )
             return (True, last_snapshot, transition)
     failure_reason = f"{stage}_still_{_classify_playback_transition(baseline, last_snapshot)}"
-    logger.info(
+    logger.event(
         "playback",
-        f"playback attempt did not progress | reason={failure_reason} | "
-        f"time={last_snapshot.get('timeText') or '-'} | media={last_snapshot.get('mediaStates')}",
+        "playback_not_confirmed",
+        "playback attempt did not progress",
+        stage=stage,
+        reason=failure_reason,
+        player_time=last_snapshot.get("timeText") or "-",
+        media=last_snapshot.get("mediaStates"),
     )
     return (False, last_snapshot, failure_reason)
 
@@ -585,19 +644,22 @@ def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
     hycms = _wait_for_hycms_frame(page, attendance_frame, 10_000)
     if not hycms:
         fallback_snapshot = _read_attendance_snapshot(attendance_frame) if attendance_frame else {}
-        logger.info("playback", f"hycms frame not found | hycmsSrc={fallback_snapshot.get('hycmsSrc') or '-'}")
+        logger.event("playback", "hycms_frame_missing", "hycms frame not found", hycms_src=fallback_snapshot.get("hycmsSrc") or "-")
         return False
 
     before = _read_hycms_snapshot(page, attendance_frame)
-    logger.info(
+    logger.event(
         "playback",
-        f"snapshot before play | time={before.get('timeText') or '-'} | media={before.get('mediaStates')} | "
-        f"front={before.get('frontScreen', {}).get('selector') if isinstance(before.get('frontScreen'), dict) else '-'} | "
-        f"play={before.get('playPause', {}).get('selector') if isinstance(before.get('playPause'), dict) else '-'}",
+        "playback_snapshot_before",
+        "snapshot before play",
+        player_time=before.get("timeText") or "-",
+        media=before.get("mediaStates"),
+        front_selector=before.get("frontScreen", {}).get("selector") if isinstance(before.get("frontScreen"), dict) else "-",
+        play_selector=before.get("playPause", {}).get("selector") if isinstance(before.get("playPause"), dict) else "-",
     )
 
     if _classify_playback_transition(before, before) in {"progressing", "running"}:
-        logger.info("playback", f"player already progressing | time={before.get('timeText') or '-'} | media={before.get('mediaStates')}")
+        logger.event("playback", "playback_already_running", "player already progressing", player_time=before.get("timeText") or "-", media=before.get("mediaStates"))
         return True
 
     last_snapshot = before
@@ -616,7 +678,7 @@ def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
         "#front-screen",
     ]:
         if _click_selector(hycms, selector):
-            logger.info("playback", f"front-screen selector clicked: {selector}")
+            logger.event("playback", "playback_action", "front-screen selector clicked", action="front_click", selector=selector)
             ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, f"front_clicked:{selector}", last_snapshot)
             if ok:
                 return True
@@ -627,7 +689,7 @@ def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
             hycms = _wait_for_hycms_frame(page, attendance_frame, 3_000) or hycms
 
     if _click_if_visible(hycms, "재생"):
-        logger.info("playback", "play button clicked")
+        logger.event("playback", "playback_action", "play button clicked", action="text_play_click")
         ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, "text_play_clicked", last_snapshot)
         if ok:
             return True
@@ -641,7 +703,7 @@ def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
         ".vjs-big-play-button",
     ]:
         if _click_selector(hycms, selector):
-            logger.info("playback", f"play control selector clicked: {selector}")
+            logger.event("playback", "playback_action", "play control selector clicked", action="play_control_click", selector=selector)
             ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, f"play_control_clicked:{selector}", last_snapshot)
             if ok:
                 return True
@@ -652,20 +714,23 @@ def _ensure_playing(page: Page, logger: HanyangLogger) -> bool:
             hycms = _wait_for_hycms_frame(page, attendance_frame, 3_000) or hycms
 
     if _invoke_media_play(hycms):
-        logger.info("playback", "media play invoked via js")
+        logger.event("playback", "playback_action", "media play invoked via js", action="js_play")
         ok, last_snapshot, last_reason = _wait_for_playback_confirmation(page, attendance_frame, logger, "js_play_invoked", last_snapshot)
         if ok:
             return True
 
     if _find_button_by_text(hycms, "일시정지").count() > 0:
         after = _read_hycms_snapshot(page, attendance_frame)
-        logger.info("playback", f"player already running | time={after.get('timeText') or '-'} | media={after.get('mediaStates')}")
+        logger.event("playback", "playback_running_after_check", "player already running", player_time=after.get("timeText") or "-", media=after.get("mediaStates"))
         return True
 
-    logger.info(
+    logger.event(
         "playback",
-        f"playback start failed | reason={last_reason} | "
-        f"time={last_snapshot.get('timeText') or '-'} | media={last_snapshot.get('mediaStates')}",
+        "playback_start_failed",
+        "playback start failed",
+        reason=last_reason,
+        player_time=last_snapshot.get("timeText") or "-",
+        media=last_snapshot.get("mediaStates"),
     )
     return False
 
@@ -678,12 +743,15 @@ def _refresh_status(frame: Frame, logger: HanyangLogger) -> None:
     button.click(timeout=5_000)
     time.sleep(POST_REFRESH_WAIT_SEC)
     after = _read_attendance_snapshot(frame)
-    logger.info(
+    logger.event(
         "progress",
-        "status refresh clicked | "
-        f"before={before['statusParts'] or ['(empty)']} | "
-        f"after={after['statusParts'] or ['(empty)']} | "
-        f"completed={after['completed']}",
+        "status_refresh",
+        "status refresh clicked",
+        before=before["statusParts"] or ["(empty)"],
+        after=after["statusParts"] or ["(empty)"],
+        before_summary=_status_summary(before),
+        after_summary=_status_summary(after),
+        completed=after["completed"],
     )
 
 
@@ -704,6 +772,7 @@ def _wait_for_attendance_frame(page: Page) -> Frame:
 def _login(page: Page, user_id: str, password: str, logger: HanyangLogger) -> Dict[str, Any]:
     submit_result = _submit_login_form(page, user_id, password, logger)
     if submit_result["code"] not in {"200", "504"}:
+        logger.event("login", "login_failed", "login failed", code=submit_result["code"], reason=submit_result["msg"] or "-")
         return {"login": False, "msg": submit_result["msg"] or f"로그인 실패 코드: {submit_result['code']}"}
 
     try:
@@ -716,10 +785,11 @@ def _login(page: Page, user_id: str, password: str, logger: HanyangLogger) -> Di
         current_url = page.url
         if current_url.startswith(LMS_ORIGIN):
             if "oauth/login" not in current_url:
-                logger.info("login", f"logged in at {mask_sensitive_url(current_url)}")
+                logger.event("login", "login_succeeded", "logged in", current_url=mask_sensitive_url(current_url))
                 return {"login": True, "msg": "로그인 성공"}
         time.sleep(1)
 
+    logger.event("login", "login_navigation_failed", "로그인 후 LMS 이동 실패", current_url=mask_sensitive_url(page.url))
     return {"login": False, "msg": f"로그인 후 LMS 이동 실패: {mask_sensitive_url(page.url)}"}
 
 
@@ -740,7 +810,7 @@ def _discover_courses(page: Page, logger: HanyangLogger) -> List[Dict[str, str]]
                 or "",
             }
         )
-    logger.info("discovery", f"dashboard courses discovered: {len(courses)}")
+    logger.event("discovery", "courses_discovered", "dashboard courses discovered", count=len(courses))
     return courses
 
 
@@ -773,7 +843,7 @@ def _discover_lecture_items(page: Page, course_ids: List[Dict[str, str]], logger
                         content_id=content_id or None,
                     )
                 )
-    logger.info("discovery", f"lecture attendance items discovered: {len(lectures)}")
+    logger.event("discovery", "lecture_items_discovered", "lecture attendance items discovered", count=len(lectures))
     return lectures
 
 
@@ -795,35 +865,59 @@ def _mark_processed(
 
 
 def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger) -> Dict[str, Any]:
+    lecture_started_at = time.time()
     page.goto(lecture.html_url, wait_until="domcontentloaded")
     attendance_frame = _wait_for_attendance_frame(page)
 
     initial = _read_attendance_snapshot(attendance_frame)
+    _log_lecture_event(
+        logger,
+        "lecture_opened",
+        lecture,
+        "lecture opened",
+        attendance_status=_status_summary(initial),
+        has_refresh_button=initial.get("hasRefreshButton"),
+        has_inner_frame=initial.get("hasInnerFrame"),
+    )
     availability_state, availability_source, availability_marker = _get_lecture_availability_reason(initial)
     non_required, non_required_marker = _get_non_required_recording_reason(initial, lecture)
     if availability_state == "scheduled":
-        logger.info(
-            "lecture",
-            f"scheduled lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
-            f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+        _log_lecture_event(
+            logger,
+            "lecture_skipped",
+            lecture,
+            "scheduled lecture skipped",
+            outcome="scheduled",
+            attendance_status=initial["statusParts"] or ["(empty)"],
+            source=availability_source or "-",
+            marker=availability_marker or "-",
         )
         return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
     if availability_state == "expired":
-        logger.info(
-            "lecture",
-            f"expired lecture skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
-            f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+        _log_lecture_event(
+            logger,
+            "lecture_skipped",
+            lecture,
+            "expired lecture skipped",
+            outcome="expired",
+            attendance_status=initial["statusParts"] or ["(empty)"],
+            source=availability_source or "-",
+            marker=availability_marker or "-",
         )
         return {"learn": True, "msg": "expired lecture"}
     if non_required:
-        logger.info(
-            "lecture",
-            f"non-required recording skipped: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
-            f"marker={non_required_marker or '-'}",
+        _log_lecture_event(
+            logger,
+            "lecture_skipped",
+            lecture,
+            "non-required recording skipped",
+            outcome="non_required_recording",
+            attendance_status=initial["statusParts"] or ["(empty)"],
+            marker=non_required_marker or "-",
         )
         return {"learn": True, "msg": "non-required recording"}
     if initial["completed"]:
-        logger.info("lecture", f"already completed: {lecture.title}")
+        _log_lecture_event(logger, "lecture_already_completed", lecture, "already completed", outcome="already_completed")
         return {"learn": True, "msg": "already completed"}
 
     # Many already-finished lectures briefly look incomplete until the
@@ -837,28 +931,45 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
             availability_state, availability_source, availability_marker = _get_lecture_availability_reason(initial)
             non_required, non_required_marker = _get_non_required_recording_reason(initial, lecture)
             if availability_state == "scheduled":
-                logger.info(
-                    "lecture",
-                    f"scheduled lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
-                    f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+                _log_lecture_event(
+                    logger,
+                    "lecture_skipped",
+                    lecture,
+                    "scheduled lecture skipped after sync",
+                    outcome="scheduled",
+                    phase="initial_sync",
+                    attendance_status=initial["statusParts"] or ["(empty)"],
+                    source=availability_source or "-",
+                    marker=availability_marker or "-",
                 )
                 return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
             if availability_state == "expired":
-                logger.info(
-                    "lecture",
-                    f"expired lecture skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
-                    f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+                _log_lecture_event(
+                    logger,
+                    "lecture_skipped",
+                    lecture,
+                    "expired lecture skipped after sync",
+                    outcome="expired",
+                    phase="initial_sync",
+                    attendance_status=initial["statusParts"] or ["(empty)"],
+                    source=availability_source or "-",
+                    marker=availability_marker or "-",
                 )
                 return {"learn": True, "msg": "expired lecture"}
             if non_required:
-                logger.info(
-                    "lecture",
-                    f"non-required recording skipped after sync: {lecture.title} | status={initial['statusParts'] or ['(empty)']} | "
-                    f"marker={non_required_marker or '-'}",
+                _log_lecture_event(
+                    logger,
+                    "lecture_skipped",
+                    lecture,
+                    "non-required recording skipped after sync",
+                    outcome="non_required_recording",
+                    phase="initial_sync",
+                    attendance_status=initial["statusParts"] or ["(empty)"],
+                    marker=non_required_marker or "-",
                 )
                 return {"learn": True, "msg": "non-required recording"}
             if initial["completed"]:
-                logger.info("lecture", f"already completed after sync: {lecture.title}")
+                _log_lecture_event(logger, "lecture_already_completed", lecture, "already completed after sync", outcome="already_completed", phase="initial_sync")
                 return {"learn": True, "msg": "already completed after sync"}
             if attempt + 1 < INITIAL_STATUS_SYNC_ATTEMPTS:
                 time.sleep(INITIAL_STATUS_SYNC_WAIT_SEC)
@@ -872,7 +983,14 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
     last_media_second: Optional[float] = None
     last_media_snapshot: Optional[Dict[str, Any]] = None
 
-    logger.info("lecture", f"playback started: {lecture.title}")
+    _log_lecture_event(
+        logger,
+        "lecture_playback_started",
+        lecture,
+        "playback started",
+        expected_duration_sec=duration_sec,
+        deadline_sec=max(int(deadline - time.time()), 0),
+    )
 
     while time.time() < deadline:
         attendance_frame = _wait_for_attendance_frame(page)
@@ -880,28 +998,52 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
         availability_state, availability_source, availability_marker = _get_lecture_availability_reason(snapshot)
         non_required, non_required_marker = _get_non_required_recording_reason(snapshot, lecture)
         if availability_state == "scheduled":
-            logger.info(
-                "lecture",
-                f"scheduled lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']} | "
-                f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+            _log_lecture_event(
+                logger,
+                "lecture_skipped",
+                lecture,
+                "scheduled lecture skipped during playback loop",
+                outcome="scheduled",
+                phase="playback_loop",
+                attendance_status=snapshot["statusParts"] or ["(empty)"],
+                source=availability_source or "-",
+                marker=availability_marker or "-",
             )
             return {"learn": True, "mark_processed": False, "msg": "scheduled lecture"}
         if availability_state == "expired":
-            logger.info(
-                "lecture",
-                f"expired lecture skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']} | "
-                f"source={availability_source or '-'} | marker={availability_marker or '-'}",
+            _log_lecture_event(
+                logger,
+                "lecture_skipped",
+                lecture,
+                "expired lecture skipped during playback loop",
+                outcome="expired",
+                phase="playback_loop",
+                attendance_status=snapshot["statusParts"] or ["(empty)"],
+                source=availability_source or "-",
+                marker=availability_marker or "-",
             )
             return {"learn": True, "msg": "expired lecture"}
         if non_required:
-            logger.info(
-                "lecture",
-                f"non-required recording skipped during playback loop: {lecture.title} | status={snapshot['statusParts'] or ['(empty)']} | "
-                f"marker={non_required_marker or '-'}",
+            _log_lecture_event(
+                logger,
+                "lecture_skipped",
+                lecture,
+                "non-required recording skipped during playback loop",
+                outcome="non_required_recording",
+                phase="playback_loop",
+                attendance_status=snapshot["statusParts"] or ["(empty)"],
+                marker=non_required_marker or "-",
             )
             return {"learn": True, "msg": "non-required recording"}
         if snapshot["completed"]:
-            logger.info("lecture", f"completed: {lecture.title}")
+            _log_lecture_event(
+                logger,
+                "lecture_completed",
+                lecture,
+                "completed",
+                elapsed_sec=int(time.time() - lecture_started_at),
+                attendance_status=snapshot["statusParts"] or ["(empty)"],
+            )
             return {"learn": True, "msg": "completed"}
 
         if snapshot["hasInnerFrame"]:
@@ -910,9 +1052,13 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
             current_media_second = _snapshot_max_media_second(media_snapshot)
             if current_media_second is not None:
                 if last_media_second is not None and current_media_second > last_media_second + 0.5:
-                    logger.info(
-                        "playback",
-                        f"playback progressing | lecture={lecture.title} | second={current_media_second:.1f} | time={media_snapshot.get('timeText') or '-'}",
+                    _log_playback_event(
+                        logger,
+                        "playback_progressing",
+                        lecture,
+                        "playback progressing",
+                        second=round(current_media_second, 1),
+                        player_time=media_snapshot.get("timeText") or "-",
                     )
                 elif (
                     last_media_second is not None
@@ -920,26 +1066,39 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
                     and last_media_snapshot
                     and _playback_was_near_completion(last_media_snapshot, last_media_second)
                 ):
-                    logger.info(
-                        "playback",
-                        f"playback restarted after end | lecture={lecture.title} | second={current_media_second:.1f} | "
-                        f"time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
+                    _log_playback_event(
+                        logger,
+                        "playback_restarted_after_end",
+                        lecture,
+                        "playback restarted after end",
+                        second=round(current_media_second, 1),
+                        player_time=media_snapshot.get("timeText") or "-",
+                        media=media_snapshot.get("mediaStates"),
                     )
                 elif last_media_second is not None and current_media_second <= last_media_second + 0.1:
-                    logger.info(
-                        "playback",
-                        f"playback stalled | lecture={lecture.title} | second={current_media_second:.1f} | "
-                        f"time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
+                    _log_playback_event(
+                        logger,
+                        "playback_stalled",
+                        lecture,
+                        "playback stalled",
+                        second=round(current_media_second, 1),
+                        player_time=media_snapshot.get("timeText") or "-",
+                        media=media_snapshot.get("mediaStates"),
                     )
                 else:
-                    logger.info(
-                        "playback",
-                        f"playback initial media state | lecture={lecture.title} | second={current_media_second:.1f} | time={media_snapshot.get('timeText') or '-'} | media={media_snapshot.get('mediaStates')}",
+                    _log_playback_event(
+                        logger,
+                        "playback_initial_state",
+                        lecture,
+                        "playback initial media state",
+                        second=round(current_media_second, 1),
+                        player_time=media_snapshot.get("timeText") or "-",
+                        media=media_snapshot.get("mediaStates"),
                     )
                 last_media_second = current_media_second
                 last_media_snapshot = media_snapshot
         elif snapshot["nonVideoHints"]:
-            logger.info("lecture", f"non-video item treated as processed: {lecture.title}")
+            _log_lecture_event(logger, "lecture_non_video_processed", lecture, "non-video item treated as processed", outcome="non_video_item")
             return {"learn": True, "msg": "non-video attendance item"}
 
         if time.time() - last_refresh >= STATUS_REFRESH_INTERVAL_SEC and snapshot["hasRefreshButton"]:
@@ -950,14 +1109,31 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
 
     attendance_frame = _wait_for_attendance_frame(page)
     if _read_attendance_snapshot(attendance_frame)["completed"]:
+        _log_lecture_event(
+            logger,
+            "lecture_completed",
+            lecture,
+            "completed after final refresh",
+            elapsed_sec=int(time.time() - lecture_started_at),
+            phase="final_refresh",
+        )
         return {"learn": True, "msg": "completed after final refresh"}
+    _log_lecture_event(
+        logger,
+        "lecture_timeout",
+        lecture,
+        "timeout waiting for completion",
+        elapsed_sec=int(time.time() - lecture_started_at),
+    )
     return {"learn": False, "msg": f"timeout waiting for completion: {lecture.title}"}
 
 
-def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_add_learned) -> Dict[str, Any]:
-    user_logger = HanyangLogger("user", user_id=str(user_id))
+def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_add_learned, run_id: Optional[str] = None) -> Dict[str, Any]:
+    resolved_run_id = run_id or HanyangLogger.new_run_id("automation")
+    user_logger = HanyangLogger("user", user_id=str(user_id), default_fields={"run_id": resolved_run_id})
     learned_set = {value for item in learned_lectures for value in ([item] if item else [])}
     learned: List[str] = []
+    run_started_at = time.time()
 
     try:
         update_user_status(user_id, "active")
@@ -968,6 +1144,12 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_
     playwright = None
 
     try:
+        user_logger.event(
+            "automation",
+            "automation_run_started",
+            "automation run started",
+            previously_learned=len(learned_lectures),
+        )
         playwright = sync_playwright().start()
         browser = playwright.chromium.launch(
             headless=os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() != "false",
@@ -980,21 +1162,62 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_
         login_result = _login(page, user_id, pwd, user_logger)
         if not login_result.get("login"):
             update_user_status(user_id, "error")
+            user_logger.event(
+                "automation",
+                "automation_run_failed",
+                "automation run failed during login",
+                outcome="login_failed",
+                elapsed_sec=int(time.time() - run_started_at),
+                reason=login_result.get("msg", "로그인 실패"),
+                level="ERROR",
+            )
             return {"success": False, "msg": login_result.get("msg", "로그인 실패"), "learned": []}
 
         courses = _discover_courses(page, user_logger)
         if not courses:
             update_user_status(user_id, "completed")
+            user_logger.event(
+                "automation",
+                "automation_run_completed",
+                "automation run completed with no courses",
+                outcome="no_courses",
+                elapsed_sec=int(time.time() - run_started_at),
+            )
             return {"success": True, "msg": "과목 없음", "learned": []}
 
         lectures = _discover_lecture_items(page, courses, user_logger)
         pending = [lecture for lecture in lectures if not _is_learned(lecture, learned_set)]
-        user_logger.info("automation", f"pending lectures: {len(pending)}")
+        user_logger.event(
+            "automation",
+            "automation_pending_lectures",
+            "pending lectures discovered",
+            total_courses=len(courses),
+            total_lectures=len(lectures),
+            pending_lectures=len(pending),
+        )
 
         for lecture in pending:
             result = _play_until_complete(page, lecture, user_logger)
             if not result.get("learn"):
                 update_user_status(user_id, "error")
+                _log_lecture_event(
+                    user_logger,
+                    "lecture_failed",
+                    lecture,
+                    "lecture processing failed",
+                    outcome="failed",
+                    failure_message=result.get("msg", ""),
+                )
+                user_logger.event(
+                    "automation",
+                    "automation_run_failed",
+                    "automation run failed",
+                    outcome="lecture_failed",
+                    failed_lecture=lecture.title,
+                    elapsed_sec=int(time.time() - run_started_at),
+                    learned_count=len(learned),
+                    level="ERROR",
+                )
                 return {
                     "success": False,
                     "msg": f"강의 처리 실패: {lecture.title} ({result.get('msg', '')})",
@@ -1004,6 +1227,15 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_
                 _mark_processed(lecture, learned, learned_set, db_add_learned, user_id)
 
         update_user_status(user_id, "completed")
+        user_logger.event(
+            "automation",
+            "automation_run_completed",
+            "automation run completed",
+            outcome="completed",
+            elapsed_sec=int(time.time() - run_started_at),
+            learned_count=len(learned),
+            pending_lectures=len(pending),
+        )
         return {"success": True, "msg": f"{len(learned)}개 강의 처리 완료", "learned": learned}
     except Exception as exc:
         user_logger.error("automation", f"playwright automation error: {mask_sensitive_text(exc)}")
@@ -1011,6 +1243,15 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_
             update_user_status(user_id, "error")
         except Exception as status_exc:
             user_logger.error("automation", f"status update failed: {mask_sensitive_text(status_exc)}")
+        user_logger.event(
+            "automation",
+            "automation_run_failed",
+            "automation run raised exception",
+            outcome="exception",
+            elapsed_sec=int(time.time() - run_started_at),
+            reason=mask_sensitive_text(exc),
+            level="ERROR",
+        )
         return {"success": False, "msg": "자동화 오류가 발생했습니다.", "learned": learned}
     finally:
         if browser:
