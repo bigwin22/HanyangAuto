@@ -250,6 +250,13 @@ def _parse_duration_seconds(texts: Iterable[str]) -> int:
     return DEFAULT_DURATION_SEC
 
 
+def _resolve_expected_duration_seconds(texts: Iterable[str], player_snapshot: Optional[Dict[str, Any]] = None) -> int:
+    player_total = int(_snapshot_total_duration(player_snapshot or {}))
+    if player_total > 0:
+        return max(player_total, 180)
+    return max(_parse_duration_seconds(texts), 180)
+
+
 def _normalize_snapshot_texts(snapshot: Dict[str, Any]) -> Dict[str, str]:
     status_parts = [str(part or "").strip() for part in snapshot.get("statusParts") or [] if str(part or "").strip()]
     body_text = str(snapshot.get("bodyText") or "").strip()
@@ -1102,8 +1109,14 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
             if attempt + 1 < INITIAL_STATUS_SYNC_ATTEMPTS:
                 time.sleep(INITIAL_STATUS_SYNC_WAIT_SEC)
 
+    duration_snapshot: Optional[Dict[str, Any]] = None
+    if initial.get("hasInnerFrame") or initial.get("hycmsSrc"):
+        duration_snapshot = _read_hycms_snapshot(page, attendance_frame)
+    elif initial.get("hasDirectMedia"):
+        duration_snapshot = _snapshot_from_direct_media(initial)
+
     duration_sec = min(
-        max(_parse_duration_seconds(initial["statusParts"] + [initial["bodyText"]]), 180),
+        _resolve_expected_duration_seconds(initial["statusParts"] + [initial["bodyText"]], duration_snapshot),
         MAX_LECTURE_RUNTIME_SEC,
     )
     deadline = time.time() + min(int(duration_sec * 1.2) + 180, MAX_LECTURE_RUNTIME_SEC)

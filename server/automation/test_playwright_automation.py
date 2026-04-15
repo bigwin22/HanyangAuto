@@ -60,6 +60,7 @@ _classify_playback_transition = MODULE._classify_playback_transition
 _get_lecture_availability_reason = MODULE._get_lecture_availability_reason
 _get_non_required_recording_reason = MODULE._get_non_required_recording_reason
 _is_static_pending_without_player = MODULE._is_static_pending_without_player
+_resolve_expected_duration_seconds = MODULE._resolve_expected_duration_seconds
 _snapshot_from_direct_media = MODULE._snapshot_from_direct_media
 
 
@@ -184,6 +185,20 @@ class PlaybackTransitionTests(unittest.TestCase):
             play_pause_class="vc-pctrl-on-playing",
         )
         self.assertEqual(_classify_playback_transition(before, after), "running")
+
+
+class DurationResolutionTests(unittest.TestCase):
+    def test_player_total_duration_overrides_status_progress_text(self):
+        snapshot = make_snapshot(
+            media_states=[media(paused=False, current_time=525, duration=3895)],
+            timing={"currentSeconds": 525, "totalSeconds": 3895},
+        )
+        resolved = _resolve_expected_duration_seconds(["학습 진행 상태:", "8분 45초(13.47%)", "미완료"], snapshot)
+        self.assertEqual(resolved, 3895)
+
+    def test_status_duration_is_used_when_player_total_missing(self):
+        resolved = _resolve_expected_duration_seconds(["학습 진행 상태:", "5분 26초(8.38%)", "미완료"])
+        self.assertEqual(resolved, 326)
 
 
 class NoPlayerHeuristicTests(unittest.TestCase):
