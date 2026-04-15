@@ -202,9 +202,9 @@ class NoPlayerHeuristicTests(unittest.TestCase):
         )
         self.assertFalse(_is_static_pending_without_player(snapshot))
 
-    def test_nonzero_progress_without_player_is_not_detected(self):
+    def test_nonzero_progress_without_player_is_detected(self):
         snapshot = make_snapshot(status_parts=["학습 진행 상태:", "19분 59초(58.76%)", "미완료", "미결"])
-        self.assertFalse(_is_static_pending_without_player(snapshot))
+        self.assertTrue(_is_static_pending_without_player(snapshot))
 
     def test_direct_media_prevents_no_player_skip(self):
         snapshot = make_snapshot(
