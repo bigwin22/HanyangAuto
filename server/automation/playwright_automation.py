@@ -241,6 +241,12 @@ def _submit_login_form(page: Page, user_id: str, password: str, logger: HanyangL
 
 def _parse_duration_seconds(texts: Iterable[str]) -> int:
     joined = " ".join(texts)
+    match = re.search(r"(\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})\s*/\s*(\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})", joined)
+    if match:
+        return _parse_clock_seconds(match.group(2)) or DEFAULT_DURATION_SEC
+    match = re.search(r"(\d{1,2}:\d{2}:\d{2})", joined)
+    if match:
+        return _parse_clock_seconds(match.group(1)) or DEFAULT_DURATION_SEC
     match = re.search(r"(\d+)분\s*(\d+)초", joined)
     if match:
         return int(match.group(1)) * 60 + int(match.group(2))
@@ -250,11 +256,48 @@ def _parse_duration_seconds(texts: Iterable[str]) -> int:
     return DEFAULT_DURATION_SEC
 
 
+def _parse_clock_seconds(value: str) -> Optional[int]:
+    parts = [segment for segment in str(value or "").strip().split(":") if segment]
+    if len(parts) == 2 and all(part.isdigit() for part in parts):
+        return int(parts[0]) * 60 + int(parts[1])
+    if len(parts) == 3 and all(part.isdigit() for part in parts):
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    return None
+
+
 def _resolve_expected_duration_seconds(texts: Iterable[str], player_snapshot: Optional[Dict[str, Any]] = None) -> int:
     player_total = int(_snapshot_total_duration(player_snapshot or {}))
     if player_total > 0:
         return max(player_total, 180)
     return max(_parse_duration_seconds(texts), 180)
+
+
+def _maybe_extend_deadline(
+    deadline: float,
+    logger: HanyangLogger,
+    lecture: LectureItem,
+    snapshot: Dict[str, Any],
+    current_media_second: Optional[float],
+) -> float:
+    total_duration = _snapshot_total_duration(snapshot)
+    if total_duration <= 0 or current_media_second is None:
+        return deadline
+    remaining_sec = max(total_duration - current_media_second, 0)
+    candidate_deadline = time.time() + min(int(remaining_sec * 1.2) + 180, MAX_LECTURE_RUNTIME_SEC)
+    if candidate_deadline > deadline + 30:
+        extended_by = int(candidate_deadline - deadline)
+        _log_lecture_event(
+            logger,
+            "lecture_deadline_extended",
+            lecture,
+            "deadline extended from active playback",
+            remaining_sec=int(remaining_sec),
+            total_duration_sec=int(total_duration),
+            current_second=int(current_media_second),
+            extended_by_sec=extended_by,
+        )
+        return candidate_deadline
+    return deadline
 
 
 def _normalize_snapshot_texts(snapshot: Dict[str, Any]) -> Dict[str, str]:
@@ -505,11 +548,21 @@ def _read_hycms_snapshot(page: Page, attendance_frame: Optional[Frame] = None) -
             """() => {
               const normalize = (value) => (value || "").replace(/\\s+/g, " ").trim();
               const parseTime = (text) => {
-                const match = normalize(text).match(/(\\d{1,2}):(\\d{2})\\s*\\/\\s*(\\d{1,2}):(\\d{2})/);
+                const parseClock = (value) => {
+                  const parts = normalize(value).split(":").map((part) => Number(part));
+                  if (parts.some((part) => Number.isNaN(part))) return null;
+                  if (parts.length === 2) return parts[0] * 60 + parts[1];
+                  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+                  return null;
+                };
+                const match = normalize(text).match(/((?:\\d{1,2}:)?\\d{1,2}:\\d{2})\\s*\\/\\s*((?:\\d{1,2}:)?\\d{1,2}:\\d{2})/);
                 if (!match) return null;
+                const currentSeconds = parseClock(match[1]);
+                const totalSeconds = parseClock(match[2]);
+                if (currentSeconds === null || totalSeconds === null) return null;
                 return {
-                  currentSeconds: Number(match[1]) * 60 + Number(match[2]),
-                  totalSeconds: Number(match[3]) * 60 + Number(match[4]),
+                  currentSeconds,
+                  totalSeconds,
                 };
               };
               const queryVisible = (selectors) => {
@@ -1262,6 +1315,7 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
                         player_time=media_snapshot.get("timeText") or "-",
                         media=media_snapshot.get("mediaStates"),
                     )
+                deadline = _maybe_extend_deadline(deadline, logger, lecture, media_snapshot, current_media_second)
                 last_media_second = current_media_second
                 last_media_snapshot = media_snapshot
         elif snapshot.get("hasDirectMedia"):
@@ -1306,6 +1360,7 @@ def _play_until_complete(page: Page, lecture: LectureItem, logger: HanyangLogger
                         player_time="-",
                         media=media_snapshot.get("mediaStates"),
                     )
+                deadline = _maybe_extend_deadline(deadline, logger, lecture, media_snapshot, current_media_second)
                 last_media_second = current_media_second
                 last_media_snapshot = media_snapshot
         elif snapshot["nonVideoHints"]:

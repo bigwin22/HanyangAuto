@@ -60,6 +60,7 @@ _classify_playback_transition = MODULE._classify_playback_transition
 _get_lecture_availability_reason = MODULE._get_lecture_availability_reason
 _get_non_required_recording_reason = MODULE._get_non_required_recording_reason
 _is_static_pending_without_player = MODULE._is_static_pending_without_player
+_parse_clock_seconds = MODULE._parse_clock_seconds
 _resolve_expected_duration_seconds = MODULE._resolve_expected_duration_seconds
 _snapshot_from_direct_media = MODULE._snapshot_from_direct_media
 
@@ -188,6 +189,9 @@ class PlaybackTransitionTests(unittest.TestCase):
 
 
 class DurationResolutionTests(unittest.TestCase):
+    def test_parse_clock_seconds_supports_hour_format(self):
+        self.assertEqual(_parse_clock_seconds("01:04:55"), 3895)
+
     def test_player_total_duration_overrides_status_progress_text(self):
         snapshot = make_snapshot(
             media_states=[media(paused=False, current_time=525, duration=3895)],
@@ -199,6 +203,10 @@ class DurationResolutionTests(unittest.TestCase):
     def test_status_duration_is_used_when_player_total_missing(self):
         resolved = _resolve_expected_duration_seconds(["학습 진행 상태:", "5분 26초(8.38%)", "미완료"])
         self.assertEqual(resolved, 326)
+
+    def test_slash_time_format_prefers_total_duration(self):
+        resolved = _resolve_expected_duration_seconds(["08:44 / 01:04:55", "미완료"])
+        self.assertEqual(resolved, 3895)
 
 
 class NoPlayerHeuristicTests(unittest.TestCase):
