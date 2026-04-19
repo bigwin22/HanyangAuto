@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
+from collections import deque
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set
+from typing import Any, Callable, Deque, Dict, Iterable, List, Optional, Set, Tuple
 
 from playwright.sync_api import Dialog, Frame, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
@@ -933,6 +935,169 @@ def _refresh_status(frame: Frame, logger: HanyangLogger) -> None:
     )
 
 
+def _failure_dump_dir(logger: HanyangLogger) -> str:
+    log_path = getattr(logger, "log_path", "") or ""
+    if log_path:
+        base_dir = os.path.dirname(log_path)
+    else:
+        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs", "failure_dumps")
+    dump_dir = os.path.join(base_dir, "failure_dumps")
+    os.makedirs(dump_dir, exist_ok=True)
+    return dump_dir
+
+
+def _write_failure_dump(base_path: str, suffix: str, content: str) -> Optional[str]:
+    if not content:
+        return None
+    path = f"{base_path}.{suffix}"
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(content)
+    return path
+
+
+def _dump_failure_artifacts(
+    logger: HanyangLogger,
+    lecture: LectureItem,
+    attempt: int,
+    metadata: Dict[str, Any],
+    attendance_html: str = "",
+    hycms_html: str = "",
+) -> Dict[str, str]:
+    safe_title = re.sub(r"[^a-zA-Z0-9_.-]+", "_", lecture.title).strip("_") or "lecture"
+    dump_name = f"{int(time.time())}_{lecture.item_id}_attempt{attempt}_{safe_title}"
+    base_path = os.path.join(_failure_dump_dir(logger), dump_name)
+    written: Dict[str, str] = {}
+    json_path = _write_failure_dump(base_path, "json", json.dumps(metadata, ensure_ascii=False, indent=2, default=str))
+    if json_path:
+        written["metadata_path"] = json_path
+    attendance_path = _write_failure_dump(base_path, "attendance.html", attendance_html)
+    if attendance_path:
+        written["attendance_html_path"] = attendance_path
+    hycms_path = _write_failure_dump(base_path, "hycms.html", hycms_html)
+    if hycms_path:
+        written["hycms_html_path"] = hycms_path
+    return written
+
+
+def _collect_failure_context(page: Page, lecture: LectureItem, logger: HanyangLogger, attempt: int, failure_message: str) -> None:
+    fields: Dict[str, Any] = {
+        "attempt": attempt,
+        "failure_message": failure_message,
+        "page_url": mask_sensitive_url(page.url) or "-",
+    }
+    attendance_frame: Optional[Frame] = None
+    attendance_html = ""
+    hycms_html = ""
+    try:
+        attendance_frame = _find_attendance_frame(page)
+        if attendance_frame:
+            attendance_snapshot = _read_attendance_snapshot(attendance_frame)
+            fields.update(
+                {
+                    "attendance_status": attendance_snapshot.get("statusParts") or ["(empty)"],
+                    "attendance_completed": attendance_snapshot.get("completed"),
+                    "attendance_has_inner_frame": attendance_snapshot.get("hasInnerFrame"),
+                    "attendance_hycms_src": mask_sensitive_url(_decode_html_url(attendance_snapshot.get("hycmsSrc") or "")) or "-",
+                    "attendance_has_direct_media": attendance_snapshot.get("hasDirectMedia"),
+                    "attendance_media": attendance_snapshot.get("directMediaStates"),
+                }
+            )
+            attendance_html = attendance_frame.content()
+        hycms_snapshot = _read_hycms_snapshot(page, attendance_frame)
+        if hycms_snapshot.get("available"):
+            fields.update(
+                {
+                    "hycms_time": hycms_snapshot.get("timeText") or "-",
+                    "hycms_timing": hycms_snapshot.get("timing") or {},
+                    "hycms_media": hycms_snapshot.get("mediaStates"),
+                }
+            )
+            hycms_frame = _wait_for_hycms_frame(page, attendance_frame, 1_000)
+            if hycms_frame:
+                hycms_html = hycms_frame.content()
+    except Exception as exc:
+        fields["context_collection_error"] = mask_sensitive_text(exc)
+    metadata = {"lecture": _lecture_log_fields(lecture), "context": fields}
+    fields.update(_dump_failure_artifacts(logger, lecture, attempt, metadata, attendance_html, hycms_html))
+    _log_lecture_event(logger, "lecture_failure_context", lecture, "captured failure page state", **fields)
+
+
+def _run_pending_lectures(
+    page: Page,
+    pending: List[LectureItem],
+    user_logger: HanyangLogger,
+    user_id: str,
+    learned: List[str],
+    learned_set: Set[str],
+    db_add_learned: Callable[[str, str], None],
+    run_started_at: float,
+) -> Dict[str, Any]:
+    queue: Deque[Tuple[LectureItem, int]] = deque((lecture, 1) for lecture in pending)
+
+    while queue:
+        lecture, attempt = queue.popleft()
+        result = _play_until_complete(page, lecture, user_logger)
+        if not result.get("learn"):
+            failure_message = result.get("msg", "")
+            _collect_failure_context(page, lecture, user_logger, attempt, failure_message)
+            if attempt < 2:
+                _log_lecture_event(
+                    user_logger,
+                    "lecture_requeued",
+                    lecture,
+                    "lecture failed and moved to queue tail",
+                    attempt=attempt,
+                    max_attempts=2,
+                    failure_message=failure_message,
+                    remaining_queue=len(queue),
+                )
+                queue.append((lecture, attempt + 1))
+                continue
+
+            update_user_status(user_id, "error")
+            _log_lecture_event(
+                user_logger,
+                "lecture_failed",
+                lecture,
+                "lecture processing failed",
+                outcome="failed",
+                failure_message=failure_message,
+                attempt=attempt,
+                max_attempts=2,
+            )
+            user_logger.event(
+                "automation",
+                "automation_run_failed",
+                "automation run failed",
+                outcome="lecture_failed",
+                failed_lecture=lecture.title,
+                elapsed_sec=int(time.time() - run_started_at),
+                learned_count=len(learned),
+                attempts=attempt,
+                level="ERROR",
+            )
+            return {
+                "success": False,
+                "msg": f"강의 처리 실패: {lecture.title} ({failure_message})",
+                "learned": learned,
+            }
+
+        if result.get("mark_processed", True):
+            _mark_processed(lecture, learned, learned_set, db_add_learned, user_id)
+
+    update_user_status(user_id, "completed")
+    user_logger.event(
+        "automation",
+        "automation_run_completed",
+        "automation run completed",
+        outcome="completed",
+        elapsed_sec=int(time.time() - run_started_at),
+        learned_count=len(learned),
+        pending_lectures=len(pending),
+    )
+    return {"success": True, "msg": f"{len(learned)}개 강의 처리 완료", "learned": learned}
+
+
 def _wait_for_attendance_frame(page: Page) -> Frame:
     page.wait_for_selector('iframe[name="tool_content"]', timeout=LECTURE_LOAD_TIMEOUT_MS)
     frame = _wait_for_frame_url(
@@ -1463,47 +1628,7 @@ def run_user_automation(user_id: str, pwd: str, learned_lectures: List[str], db_
             previously_learned_filtered=len(lectures) - len(pending),
         )
 
-        for lecture in pending:
-            result = _play_until_complete(page, lecture, user_logger)
-            if not result.get("learn"):
-                update_user_status(user_id, "error")
-                _log_lecture_event(
-                    user_logger,
-                    "lecture_failed",
-                    lecture,
-                    "lecture processing failed",
-                    outcome="failed",
-                    failure_message=result.get("msg", ""),
-                )
-                user_logger.event(
-                    "automation",
-                    "automation_run_failed",
-                    "automation run failed",
-                    outcome="lecture_failed",
-                    failed_lecture=lecture.title,
-                    elapsed_sec=int(time.time() - run_started_at),
-                    learned_count=len(learned),
-                    level="ERROR",
-                )
-                return {
-                    "success": False,
-                    "msg": f"강의 처리 실패: {lecture.title} ({result.get('msg', '')})",
-                    "learned": learned,
-                }
-            if result.get("mark_processed", True):
-                _mark_processed(lecture, learned, learned_set, db_add_learned, user_id)
-
-        update_user_status(user_id, "completed")
-        user_logger.event(
-            "automation",
-            "automation_run_completed",
-            "automation run completed",
-            outcome="completed",
-            elapsed_sec=int(time.time() - run_started_at),
-            learned_count=len(learned),
-            pending_lectures=len(pending),
-        )
-        return {"success": True, "msg": f"{len(learned)}개 강의 처리 완료", "learned": learned}
+        return _run_pending_lectures(page, pending, user_logger, user_id, learned, learned_set, db_add_learned, run_started_at)
     except Exception as exc:
         user_logger.error("automation", f"playwright automation error: {mask_sensitive_text(exc)}")
         try:

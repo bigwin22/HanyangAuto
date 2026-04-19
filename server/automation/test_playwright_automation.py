@@ -1,6 +1,8 @@
 import importlib.util
 import os
 import sys
+import tempfile
+import time
 import types
 import unittest
 
@@ -61,6 +63,8 @@ _get_lecture_availability_reason = MODULE._get_lecture_availability_reason
 _get_non_required_recording_reason = MODULE._get_non_required_recording_reason
 _is_static_pending_without_player = MODULE._is_static_pending_without_player
 _parse_clock_seconds = MODULE._parse_clock_seconds
+_dump_failure_artifacts = MODULE._dump_failure_artifacts
+_run_pending_lectures = MODULE._run_pending_lectures
 _resolve_expected_duration_seconds = MODULE._resolve_expected_duration_seconds
 _snapshot_from_direct_media = MODULE._snapshot_from_direct_media
 
@@ -98,6 +102,15 @@ def media(*, paused=True, ended=False, current_time=0, duration=0, ready_state=4
         "duration": duration,
         "readyState": ready_state,
     }
+
+
+class FakePage:
+    url = "https://learning.hanyang.ac.kr/fake"
+
+
+class DumpLogger(DummyLogger):
+    def __init__(self, log_path):
+        self.log_path = log_path
 
 
 class LectureAvailabilityTests(unittest.TestCase):
@@ -243,6 +256,96 @@ class NoPlayerHeuristicTests(unittest.TestCase):
         snapshot["directMediaStates"] = [media(paused=False, current_time=12, duration=120)]
         converted = _snapshot_from_direct_media(snapshot)
         self.assertEqual(converted["mediaStates"][0]["currentTime"], 12)
+
+
+class RetryQueueTests(unittest.TestCase):
+    def setUp(self):
+        self.orig_play_until_complete = MODULE._play_until_complete
+        self.orig_collect_failure_context = MODULE._collect_failure_context
+        self.orig_mark_processed = MODULE._mark_processed
+        self.orig_update_user_status = MODULE.update_user_status
+
+    def tearDown(self):
+        MODULE._play_until_complete = self.orig_play_until_complete
+        MODULE._collect_failure_context = self.orig_collect_failure_context
+        MODULE._mark_processed = self.orig_mark_processed
+        MODULE.update_user_status = self.orig_update_user_status
+
+    def test_failed_lecture_is_requeued_once_then_succeeds(self):
+        lecture_a = LectureItem("1", "m", "a", "A", "https://a", "https://a", None)
+        lecture_b = LectureItem("1", "m", "b", "B", "https://b", "https://b", None)
+        sequence = {
+            "https://a": [{"learn": False, "msg": "boom"}, {"learn": True, "msg": "ok"}],
+            "https://b": [{"learn": True, "msg": "ok"}],
+        }
+        calls = []
+        processed = []
+        statuses = []
+        contexts = []
+
+        def fake_play(page, lecture, logger):
+            calls.append(lecture.key)
+            return sequence[lecture.key].pop(0)
+
+        MODULE._play_until_complete = fake_play
+        MODULE._collect_failure_context = lambda *args, **kwargs: contexts.append(args[1].key)
+        MODULE._mark_processed = lambda lecture, *args, **kwargs: processed.append(lecture.key)
+        MODULE.update_user_status = lambda user_id, status: statuses.append(status)
+
+        result = _run_pending_lectures(FakePage(), [lecture_a, lecture_b], DummyLogger(), "user", [], set(), lambda *_: None, time.time())
+
+        self.assertTrue(result["success"])
+        self.assertEqual(calls, ["https://a", "https://b", "https://a"])
+        self.assertEqual(contexts, ["https://a"])
+        self.assertEqual(processed, ["https://b", "https://a"])
+        self.assertEqual(statuses[-1], "completed")
+
+    def test_second_failure_stops_automation(self):
+        lecture_a = LectureItem("1", "m", "a", "A", "https://a", "https://a", None)
+        lecture_b = LectureItem("1", "m", "b", "B", "https://b", "https://b", None)
+        sequence = {
+            "https://a": [{"learn": False, "msg": "boom1"}, {"learn": False, "msg": "boom2"}],
+            "https://b": [{"learn": True, "msg": "ok"}],
+        }
+        calls = []
+        statuses = []
+        contexts = []
+
+        def fake_play(page, lecture, logger):
+            calls.append(lecture.key)
+            return sequence[lecture.key].pop(0)
+
+        MODULE._play_until_complete = fake_play
+        MODULE._collect_failure_context = lambda *args, **kwargs: contexts.append(args[1].key)
+        MODULE._mark_processed = lambda *args, **kwargs: None
+        MODULE.update_user_status = lambda user_id, status: statuses.append(status)
+
+        result = _run_pending_lectures(FakePage(), [lecture_a, lecture_b], DummyLogger(), "user", [], set(), lambda *_: None, time.time())
+
+        self.assertFalse(result["success"])
+        self.assertEqual(calls, ["https://a", "https://b", "https://a"])
+        self.assertEqual(contexts, ["https://a", "https://a"])
+        self.assertEqual(statuses[-1], "error")
+
+
+class FailureDumpTests(unittest.TestCase):
+    def test_failure_artifacts_are_written(self):
+        lecture = LectureItem("1", "m", "a", "Sample Lecture", "https://a", "https://a", None)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            logger = DumpLogger(os.path.join(temp_dir, "log1.log"))
+            written = _dump_failure_artifacts(
+                logger,
+                lecture,
+                1,
+                {"lecture": {"item_id": "a"}, "context": {"failure_message": "boom"}},
+                attendance_html="<html>attendance</html>",
+                hycms_html="<html>hycms</html>",
+            )
+
+            self.assertTrue(os.path.exists(written["metadata_path"]))
+            self.assertTrue(os.path.exists(written["attendance_html_path"]))
+            self.assertTrue(os.path.exists(written["hycms_html_path"]))
+            self.assertIn("failure_dumps", written["metadata_path"])
 
 
 if __name__ == "__main__":
